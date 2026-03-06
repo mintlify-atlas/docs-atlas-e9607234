@@ -1,0 +1,391 @@
+---
+title: 'Eager Loading'
+description: 'Prevent N+1 query problems by loading relationships efficiently'
+---
+
+**Eager loading** solves the N+1 query problem by loading all related data in advance with minimal database queries. Instead of making a separate query for each record's relationships, ServiceSQL fetches all related data in just a few optimized queries.
+
+## The N+1 Problem
+
+<Warning>
+  Without eager loading, you can easily create performance problems:
+  
+  ```javascript
+  // ❌ N+1 Problem: 1 query for posts + N queries for authors
+  const posts = Post.all();
+  posts.each(post => {
+    const author = User.find(post.user_id); // Separate query for EACH post!
+    Logger.log(`${post.title} by ${author.name}`);
+  });
+  ```
+  
+  If you have 100 posts, this creates **101 queries** (1 for posts + 100 for authors)!
+</Warning>
+
+## Using Eager Loading
+
+### Load Single Relationships
+
+Use the `with()` method to eager load relationships:
+
+```javascript
+// ✅ Efficient: 2 queries total
+const posts = Post.with("author").get();
+
+posts.each(post => {
+  Logger.log(`${post.title} by ${post.author.name}`);
+});
+```
+
+### Load Multiple Relationships
+
+```javascript
+// Load multiple relationships at once
+const posts = Post.with("author", "comments").get();
+
+posts.each(post => {
+  Logger.log(post.title);
+  Logger.log(`By: ${post.author.name}`);
+  Logger.log(`Comments: ${post.comments.count()}`);
+});
+```
+
+### Load Nested Relationships
+
+Use dot notation to load relationships of relationships:
+
+```javascript
+// Load posts, their comments, and each comment's author
+const posts = Post.with("comments.author").get();
+
+posts.each(post => {
+  Logger.log(`Post: ${post.title}`);
+  post.comments.each(comment => {
+    Logger.log(`  - ${comment.body} (by ${comment.author.name})`);
+  });
+});
+```
+
+## Defining Relationships
+
+For eager loading to work, you must define relationship methods in your models:
+
+```javascript
+class Post extends Model {
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+
+  comments() {
+    return this.hasMany(Comment);
+  }
+
+  tags() {
+    return this.manyToMany(Tag, "PostTag");
+  }
+}
+
+Post._table = "Posts";
+Post.use(db);
+```
+
+<Note>
+  See the [Relationships](/core/relationships) documentation for details on defining `hasOne`, `hasMany`, `belongsTo`, and `manyToMany` relationships.
+</Note>
+
+## How It Works
+
+From `EagerLoader.js:1-138`, ServiceSQL's eager loading implementation:
+
+<Steps>
+
+<Step title="Parse relationship names">
+  The `with()` method parses relationship strings including nested relations:
+  
+  ```javascript
+  // "comments.author" becomes {comments: ["author"]}
+  static _parseRelations(relations) {
+    const parsed = {};
+    for (const rel of relations) {
+      const parts = String(rel).split(".");
+      const base = parts[0];
+      if (!parsed[base]) parsed[base] = [];
+      if (parts.length > 1) {
+        parsed[base].push(parts.slice(1).join("."));
+      }
+    }
+    return parsed;
+  }
+  ```
+</Step>
+
+<Step title="Load each relationship">
+  For each relationship, ServiceSQL:
+  1. Gets the relationship definition from the model
+  2. Creates a relation instance (HasMany, BelongsTo, etc.)
+  3. Calls `relation.load(instances)` to fetch data
+  4. Assigns results to the parent instances
+</Step>
+
+<Step title="Recursively load nested relations">
+  After loading a relationship, nested relationships are loaded on the related records:
+  
+  ```javascript
+  // Load nested relations
+  if (nested.length) {
+    const allRelated = Object.values(loaded).flat();
+    if (allRelated.length) {
+      this.load(relationInstance.related, nested, allRelated);
+    }
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Practical Examples
+
+### Blog System
+
+```javascript
+class User extends Model {
+  posts() {
+    return this.hasMany(Post);
+  }
+
+  profile() {
+    return this.hasOne(Profile);
+  }
+}
+
+class Post extends Model {
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+
+  comments() {
+    return this.hasMany(Comment);
+  }
+}
+
+class Comment extends Model {
+  post() {
+    return this.belongsTo(Post, "post_id");
+  }
+
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+
+// Load users with posts and profile
+const users = User.with("posts", "profile").get();
+
+users.each(user => {
+  Logger.log(user.name);
+  Logger.log(user.profile ? user.profile.bio : "No profile");
+  Logger.log(`Posts: ${user.posts.count()}`);
+});
+
+// Load posts with author and comments with their authors
+const posts = Post.with("author", "comments.author").get();
+
+posts.each(post => {
+  Logger.log(`${post.title} by ${post.author.name}`);
+  post.comments.each(comment => {
+    Logger.log(`  Comment by ${comment.author.name}: ${comment.body}`);
+  });
+});
+```
+
+### E-commerce System
+
+```javascript
+class Order extends Model {
+  customer() {
+    return this.belongsTo(User, "user_id");
+  }
+
+  items() {
+    return this.hasMany(OrderItem);
+  }
+}
+
+class OrderItem extends Model {
+  order() {
+    return this.belongsTo(Order, "order_id");
+  }
+
+  product() {
+    return this.belongsTo(Product, "product_id");
+  }
+}
+
+// Load orders with customer, items, and product details
+const orders = Order.with("customer", "items.product").get();
+
+orders.each(order => {
+  Logger.log(`Order #${order.id} for ${order.customer.name}`);
+  order.items.each(item => {
+    Logger.log(`  ${item.quantity}x ${item.product.name}`);
+  });
+});
+```
+
+## Combining with Query Builder
+
+Eager loading works seamlessly with other query methods:
+
+```javascript
+// Eager loading + where clauses
+const posts = Post.with("author", "comments")
+  .where("published", true)
+  .orderBy("created_at", "desc")
+  .limit(10)
+  .get();
+
+// Eager loading + scopes
+const posts = Post.scope("published")
+  .with("author")
+  .get();
+
+// Eager loading with first()
+const post = Post.with("author", "comments")
+  .where("slug", slug)
+  .first();
+```
+
+## Performance Comparison
+
+<Accordion title="Without Eager Loading (N+1 Problem)">
+
+```javascript
+// ❌ Bad: 101 queries for 100 posts
+const posts = Post.all(); // 1 query
+posts.each(post => {
+  const author = User.find(post.user_id); // 100 queries!
+});
+```
+
+**Queries executed:** 1 + N (where N = number of posts)
+
+</Accordion>
+
+<Accordion title="With Eager Loading">
+
+```javascript
+// ✅ Good: 2 queries total
+const posts = Post.with("author").get();
+posts.each(post => {
+  Logger.log(post.author.name); // No additional queries!
+});
+```
+
+**Queries executed:** 2 (one for posts, one for all authors)
+
+</Accordion>
+
+## Relationship Constraints
+
+You can add constraints to relationships when defining them:
+
+```javascript
+class User extends Model {
+  publishedPosts() {
+    return this.hasMany(Post, null, "id", (qb) =>
+      qb.where("published", true).orderBy("created_at", "desc")
+    );
+  }
+}
+
+// This will only load published posts, sorted by date
+const users = User.with("publishedPosts").get();
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Always use eager loading for relationships">
+  ```javascript
+  // ✅ Load relationships in advance
+  const posts = Post.with("author", "comments").get();
+  
+  // ❌ Don't query in loops
+  const posts = Post.all();
+  posts.each(post => {
+    const author = User.find(post.user_id);
+  });
+  ```
+</Step>
+
+<Step title="Load nested relationships efficiently">
+  ```javascript
+  // ✅ Use dot notation for nested relations
+  const posts = Post.with("comments.author").get();
+  
+  // ❌ Don't load nested relations separately
+  const posts = Post.with("comments").get();
+  posts.each(post => {
+    post.comments.each(comment => {
+      const author = User.find(comment.user_id);
+    });
+  });
+  ```
+</Step>
+
+<Step title="Define relationships properly">
+  ```javascript
+  // ✅ Return relationship definitions
+  posts() {
+    return this.hasMany(Post);
+  }
+  
+  // ❌ Don't execute queries directly
+  posts() {
+    return Post.where("user_id", this.id).get();
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Common Pitfalls
+
+<Warning>
+  **Avoid these mistakes:**
+  
+  - **Not defining relationships**: Eager loading only works with properly defined relationship methods
+  - **Incorrect foreign keys**: Make sure your foreign key names match between tables
+  - **Querying in loops**: Never call `find()` or `where()` inside loops when iterating over results
+</Warning>
+
+## Implementation Reference
+
+From `Model.js:213-224`, the model's eager loading integration:
+
+```javascript
+static with(...relations) {
+  return this.query().with(...relations);
+}
+
+static _eagerLoad(relations, instances) {
+  try {
+    EagerLoader.load(this, relations, instances);
+  } finally {
+    this._with = null;
+  }
+}
+```
+
+## Summary
+
+| Method | Description | Example |
+|--------|-------------|----------|
+| `with("relation")` | Load single relationship | `Post.with("author")` |
+| `with("rel1", "rel2")` | Load multiple relationships | `Post.with("author", "comments")` |
+| `with("rel.nested")` | Load nested relationships | `Post.with("comments.author")` |
+
+<Tip>
+  **Rule of thumb**: If you're accessing a relationship in a loop, load it with `with()` first. This simple practice will dramatically improve your application's performance.
+</Tip>

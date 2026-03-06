@@ -1,0 +1,700 @@
+---
+title: "Model"
+description: "ORM Model class providing ActiveRecord pattern for working with spreadsheet data"
+---
+
+## Overview
+
+The `Model` class provides an elegant ActiveRecord implementation for ServiceSQL. Models represent tables in your spreadsheet and provide intuitive methods for querying, creating, updating, and deleting records.
+
+## Setup
+
+### Creating a Model
+
+```javascript
+class User extends Model {
+  static tableName = 'Users';
+  static _primaryKey = 'id';
+  static _timestamps = true;
+  static _fillable = ['name', 'email', 'status'];
+  static _casts = {
+    email: 'string',
+    active: 'boolean'
+  };
+}
+
+// Register with database
+db.model(User);
+```
+
+### Model Configuration
+
+<Accordion title="Static Properties">
+<ResponseField name="_table" type="string">
+  Table/sheet name (defaults to class name)
+</ResponseField>
+
+<ResponseField name="_primaryKey" type="string" default="id">
+  Primary key column name
+</ResponseField>
+
+<ResponseField name="_timestamps" type="boolean" default="false">
+  Enable automatic `created_at` and `updated_at` management
+</ResponseField>
+
+<ResponseField name="_fillable" type="array" default="null">
+  Array of columns that can be mass-assigned. `null` means all columns are fillable
+</ResponseField>
+
+<ResponseField name="_casts" type="object" default="{}">
+  Define type casting for attributes
+  
+  Supported types: `int`, `integer`, `float`, `double`, `string`, `bool`, `boolean`, `json`, `array`, `date`, `datetime`, `dmy`, `dmyhms`
+</ResponseField>
+
+<ResponseField name="_dates" type="array" default="['created_at', 'updated_at', 'deleted_at']">
+  Columns that should be cast to Date objects
+</ResponseField>
+
+<ResponseField name="_softDeletes" type="boolean" default="false">
+  Enable soft deletes (sets `deleted_at` instead of removing records)
+</ResponseField>
+
+<ResponseField name="_deletedAt" type="string" default="deleted_at">
+  Column name for soft delete timestamp
+</ResponseField>
+</Accordion>
+
+## Static Methods
+
+### Initialization
+
+<Accordion title="use()">
+Manually set the database connection for a model.
+
+```javascript
+Model.use(db);
+```
+
+<ParamField path="db" type="APPSQL" required>
+  The database connection instance
+</ParamField>
+
+<Note>
+  This is automatically called when using `db.model()`. Only use this for manual configuration.
+</Note>
+</Accordion>
+
+<Accordion title="boot()">
+Lifecycle hook called once when the model is initialized. Override this to set up observers, global scopes, etc.
+
+```javascript
+class User extends Model {
+  static boot() {
+    super.boot();
+    
+    this.observe({
+      creating: (user) => {
+        console.log('Creating user:', user.email);
+      },
+      created: (user) => {
+        console.log('User created:', user.id);
+      }
+    });
+  }
+}
+```
+</Accordion>
+
+### Query Methods
+
+<Accordion title="query()">
+Get a new query builder instance for the model.
+
+```javascript
+const query = User.query()
+  .where('status', 'active')
+  .orderBy('created_at', 'desc');
+```
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns a QueryBuilder instance with the model's table and soft delete handling configured
+</ResponseField>
+</Accordion>
+
+<Accordion title="where()">
+Shorthand for creating a query with a where clause.
+
+```javascript
+const activeUsers = User.where('status', 'active').get();
+const premiumUsers = User.where('plan', 'premium').where('verified', true).get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator (defaults to `==` if not provided)
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to compare against
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns a QueryBuilder instance with the where clause applied
+</ResponseField>
+</Accordion>
+
+<Accordion title="all()">
+Retrieve all records from the model's table.
+
+```javascript
+const allUsers = User.all();
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a Collection of model instances
+</ResponseField>
+</Accordion>
+
+<Accordion title="first()">
+Retrieve the first record.
+
+```javascript
+const firstUser = User.first();
+const oldestUser = User.orderBy('created_at', 'asc').first();
+```
+
+<ResponseField name="return" type="Model|null">
+  Returns a model instance or null if no records found
+</ResponseField>
+</Accordion>
+
+<Accordion title="find()">
+Find a record by primary key.
+
+```javascript
+const user = User.find(42);
+if (user) {
+  console.log(user.name);
+}
+```
+
+<ParamField path="id" type="any" required>
+  Value of the primary key
+</ParamField>
+
+<ResponseField name="return" type="Model|null">
+  Returns a model instance or null if not found
+</ResponseField>
+</Accordion>
+
+<Accordion title="findOrFail()">
+Find a record by primary key or throw an error.
+
+```javascript
+try {
+  const user = User.findOrFail(42);
+  console.log(user.name);
+} catch (e) {
+  console.log('User not found');
+}
+```
+
+<ParamField path="id" type="any" required>
+  Value of the primary key
+</ParamField>
+
+<ResponseField name="return" type="Model">
+  Returns a model instance or throws an error
+</ResponseField>
+</Accordion>
+
+<Accordion title="create()">
+Create and save a new record.
+
+```javascript
+const user = User.create({
+  name: 'John Doe',
+  email: 'john@example.com',
+  status: 'active'
+});
+
+console.log(user.id); // Auto-generated ID
+```
+
+<ParamField path="attrs" type="object" default="{}">
+  Attribute values for the new record
+</ParamField>
+
+<ResponseField name="return" type="Model">
+  Returns the created model instance with ID populated
+</ResponseField>
+
+<Note>
+  Triggers `creating` and `created` events. Automatically sets timestamps if enabled.
+</Note>
+</Accordion>
+
+### Eager Loading
+
+<Accordion title="with()">
+Eager load relationships to avoid N+1 queries.
+
+```javascript
+const users = User.with('posts', 'comments').get();
+
+users.each(user => {
+  console.log(user.name);
+  console.log(user.posts); // Already loaded
+  console.log(user.comments); // Already loaded
+});
+```
+
+<ParamField path="...relations" type="string" required>
+  Names of relationships to eager load
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns a QueryBuilder with eager loading configured
+</ResponseField>
+</Accordion>
+
+### Scopes
+
+<Accordion title="scope()">
+Apply a query scope defined in the model.
+
+```javascript
+class User extends Model {
+  static scopeActive(query) {
+    return query.where('status', 'active');
+  }
+  
+  static scopePremium(query) {
+    return query.where('plan', 'premium');
+  }
+}
+
+const users = User.scope('active').get();
+const premiumUsers = User.scope('premium').scope('active').get();
+```
+
+<ParamField path="name" type="string" required>
+  Name of the scope (without 'scope' prefix)
+</ParamField>
+
+<ParamField path="...args" type="any">
+  Additional arguments to pass to the scope method
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns a QueryBuilder with the scope applied
+</ResponseField>
+</Accordion>
+
+### Soft Deletes
+
+<Accordion title="withTrashed()">
+Include soft-deleted records in queries.
+
+```javascript
+class User extends Model {
+  static _softDeletes = true;
+}
+
+const allUsers = User.withTrashed().get();
+```
+
+<ResponseField name="return" type="class">
+  Returns the model class with trash mode set to 'with'
+</ResponseField>
+</Accordion>
+
+<Accordion title="onlyTrashed()">
+Retrieve only soft-deleted records.
+
+```javascript
+const deletedUsers = User.onlyTrashed().get();
+```
+
+<ResponseField name="return" type="class">
+  Returns the model class with trash mode set to 'only'
+</ResponseField>
+</Accordion>
+
+### Observers
+
+<Accordion title="observe()">
+Register an observer for model events.
+
+```javascript
+User.observe({
+  creating: (user) => {
+    console.log('About to create:', user);
+  },
+  created: (user) => {
+    console.log('Created:', user.id);
+  },
+  updating: (user) => {
+    console.log('About to update:', user.id);
+  },
+  updated: (user) => {
+    console.log('Updated:', user.id);
+  },
+  deleting: (user) => {
+    console.log('About to delete:', user.id);
+  },
+  deleted: (user) => {
+    console.log('Deleted:', user.id);
+  }
+});
+```
+
+<ParamField path="observer" type="object|function" required>
+  Object with event handler methods or a function that receives (eventName, instance)
+</ParamField>
+
+<Note>
+  Available events: `creating`, `created`, `updating`, `updated`, `deleting`, `deleted`
+</Note>
+</Accordion>
+
+## Instance Methods
+
+<Accordion title="save()">
+Save the model instance (create or update).
+
+```javascript
+const user = new User({ name: 'John', email: 'john@example.com' });
+user.save(); // Creates new record
+
+user.name = 'Jane';
+user.save(); // Updates existing record
+```
+
+<ResponseField name="return" type="Model">
+  Returns the model instance
+</ResponseField>
+
+<Note>
+  Automatically determines whether to create or update based on primary key presence.
+</Note>
+</Accordion>
+
+<Accordion title="update()">
+Update the model with new attributes and save.
+
+```javascript
+const user = User.find(1);
+user.update({
+  name: 'Updated Name',
+  status: 'inactive'
+});
+```
+
+<ParamField path="attrs" type="object" default="{}">
+  Attributes to update
+</ParamField>
+
+<ResponseField name="return" type="Model">
+  Returns the updated model instance
+</ResponseField>
+</Accordion>
+
+<Accordion title="delete()">
+Delete the model instance.
+
+```javascript
+const user = User.find(1);
+user.delete();
+```
+
+<ResponseField name="return" type="boolean">
+  Returns true if deleted successfully
+</ResponseField>
+
+<Note>
+  If soft deletes are enabled, sets `deleted_at` timestamp instead of removing the record.
+</Note>
+</Accordion>
+
+<Accordion title="fill()">
+Fill the model with an array of attributes.
+
+```javascript
+const user = new User();
+user.fill({
+  name: 'John',
+  email: 'john@example.com',
+  password: 'secret' // Ignored if not in _fillable
+});
+```
+
+<ParamField path="attrs" type="object" default="{}">
+  Attributes to fill
+</ParamField>
+
+<ResponseField name="return" type="Model">
+  Returns the model instance
+</ResponseField>
+
+<Note>
+  Respects the `_fillable` property for mass assignment protection.
+</Note>
+</Accordion>
+
+<Accordion title="toJSON()">
+Convert the model to a plain JavaScript object.
+
+```javascript
+const user = User.find(1);
+const json = user.toJSON();
+console.log(json); // { id: 1, name: 'John', email: 'john@example.com' }
+```
+
+<ResponseField name="return" type="object">
+  Returns a plain object with all non-private properties
+</ResponseField>
+</Accordion>
+
+## Relationships
+
+<Accordion title="belongsTo()">
+Define a belongs-to relationship.
+
+```javascript
+class Post extends Model {
+  user() {
+    return this.belongsTo(User, 'user_id', 'id');
+  }
+}
+```
+
+<ParamField path="RelatedClass" type="class" required>
+  The related model class
+</ParamField>
+
+<ParamField path="foreignKey" type="string">
+  Foreign key column (defaults to `{RelatedClass._table}_id`)
+</ParamField>
+
+<ParamField path="ownerKey" type="string" default="id">
+  Primary key on the related model
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns a relationship definition object
+</ResponseField>
+</Accordion>
+
+<Accordion title="hasMany()">
+Define a one-to-many relationship.
+
+```javascript
+class User extends Model {
+  posts() {
+    return this.hasMany(Post, 'user_id', 'id');
+  }
+}
+```
+
+<ParamField path="RelatedClass" type="class" required>
+  The related model class
+</ParamField>
+
+<ParamField path="foreignKey" type="string">
+  Foreign key on the related model (defaults to `{this._table}_id`)
+</ParamField>
+
+<ParamField path="localKey" type="string" default="id">
+  Primary key on this model
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns a relationship definition object
+</ResponseField>
+</Accordion>
+
+<Accordion title="hasOne()">
+Define a one-to-one relationship.
+
+```javascript
+class User extends Model {
+  profile() {
+    return this.hasOne(Profile, 'user_id', 'id');
+  }
+}
+```
+
+<ParamField path="RelatedClass" type="class" required>
+  The related model class
+</ParamField>
+
+<ParamField path="foreignKey" type="string">
+  Foreign key on the related model (defaults to `{this._table}_id`)
+</ParamField>
+
+<ParamField path="localKey" type="string" default="id">
+  Primary key on this model
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns a relationship definition object
+</ResponseField>
+</Accordion>
+
+<Accordion title="manyToMany()">
+Define a many-to-many relationship.
+
+```javascript
+class User extends Model {
+  roles() {
+    return this.manyToMany(Role, 'user_roles', 'user_id', 'role_id');
+  }
+}
+```
+
+<ParamField path="RelatedClass" type="class" required>
+  The related model class
+</ParamField>
+
+<ParamField path="pivotTable" type="string" required>
+  Name of the pivot/junction table
+</ParamField>
+
+<ParamField path="parentKey" type="string">
+  Foreign key for this model in pivot table (defaults to `{this._table}_id`)
+</ParamField>
+
+<ParamField path="relatedKey" type="string">
+  Foreign key for related model in pivot table (defaults to `{RelatedClass._table}_id`)
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns a relationship definition object
+</ResponseField>
+</Accordion>
+
+## Accessors & Mutators
+
+<Accordion title="Accessors (Getters)">
+Define custom attribute accessors to transform data when retrieving.
+
+```javascript
+class User extends Model {
+  getFullNameAttribute(value) {
+    return `${this.first_name} ${this.last_name}`;
+  }
+  
+  getEmailAttribute(value) {
+    return value.toLowerCase();
+  }
+}
+
+const user = User.find(1);
+console.log(user.full_name); // "John Doe"
+console.log(user.email); // "john@example.com"
+```
+
+<Note>
+  Accessor methods follow the pattern: `get{AttributeName}Attribute(value)`
+</Note>
+</Accordion>
+
+<Accordion title="Mutators (Setters)">
+Define custom attribute mutators to transform data before saving.
+
+```javascript
+class User extends Model {
+  static setPasswordAttribute(value) {
+    // In a real app, you'd hash the password
+    return value.toUpperCase();
+  }
+  
+  static setEmailAttribute(value) {
+    return value.toLowerCase().trim();
+  }
+}
+
+const user = User.create({
+  email: '  JOHN@EXAMPLE.COM  ',
+  password: 'secret'
+});
+// Saved as: { email: 'john@example.com', password: 'SECRET' }
+```
+
+<Note>
+  Mutator methods follow the pattern: `set{AttributeName}Attribute(value)` and must be static
+</Note>
+</Accordion>
+
+## Complete Example
+
+```javascript
+class User extends Model {
+  static tableName = 'Users';
+  static _timestamps = true;
+  static _fillable = ['name', 'email', 'role', 'status'];
+  static _casts = {
+    active: 'boolean',
+    login_count: 'integer'
+  };
+  static _softDeletes = true;
+  
+  static boot() {
+    super.boot();
+    
+    this.observe({
+      creating: (user) => {
+        user.status = user.status || 'pending';
+      },
+      created: (user) => {
+        Logger.log(`User ${user.id} created`);
+      }
+    });
+  }
+  
+  static scopeActive(query) {
+    return query.where('status', 'active');
+  }
+  
+  static scopeAdmins(query) {
+    return query.where('role', 'admin');
+  }
+  
+  posts() {
+    return this.hasMany(Post, 'user_id');
+  }
+  
+  profile() {
+    return this.hasOne(Profile, 'user_id');
+  }
+  
+  getFullNameAttribute() {
+    return `${this.first_name} ${this.last_name}`;
+  }
+  
+  static setEmailAttribute(value) {
+    return value.toLowerCase().trim();
+  }
+}
+
+// Register model
+db.model(User);
+
+// Usage
+const user = User.create({
+  name: 'John Doe',
+  email: '  JOHN@EXAMPLE.COM  ',
+  role: 'admin'
+});
+
+const activeAdmins = User.scope('active').scope('admins').get();
+const usersWithPosts = User.with('posts').get();
+
+user.update({ status: 'active' });
+user.delete();
+```

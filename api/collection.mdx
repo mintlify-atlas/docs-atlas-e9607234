@@ -1,0 +1,1028 @@
+---
+title: "Collection"
+description: "Powerful array wrapper providing Laravel-style collection methods for data transformation"
+---
+
+## Overview
+
+The `Collection` class wraps arrays and provides a fluent, chainable API for filtering, sorting, transforming, and aggregating data. It's inspired by Laravel Collections and is returned by QueryBuilder and Model queries.
+
+## Creating Collections
+
+```javascript
+// From query results
+const users = db.table('Users').get(); // Returns a Collection
+
+// Manually create
+const collection = new Collection([1, 2, 3, 4, 5]);
+const users = Collection.make([{name: 'John'}, {name: 'Jane'}]);
+```
+
+## Static Constructors
+
+<Accordion title="make()">
+Create a new collection from an array.
+
+```javascript
+const collection = Collection.make([1, 2, 3, 4, 5]);
+```
+
+<ParamField path="items" type="array" required>
+  Array of items to wrap
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection instance
+</ResponseField>
+</Accordion>
+
+<Accordion title="wrap()">
+Wrap a value in a collection.
+
+```javascript
+const collection = Collection.wrap([1, 2, 3]); // Collection
+const single = Collection.wrap(42); // Collection with [42]
+const existing = Collection.wrap(otherCollection); // Returns same collection
+```
+
+<ParamField path="value" type="any" required>
+  Value to wrap (array, collection, or single value)
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a Collection instance
+</ResponseField>
+</Accordion>
+
+<Accordion title="times()">
+Create a collection by invoking a callback n times.
+
+```javascript
+const squares = Collection.times(5, i => i * i);
+// Collection: [0, 1, 4, 9, 16]
+```
+
+<ParamField path="count" type="number" required>
+  Number of times to invoke callback
+</ParamField>
+
+<ParamField path="callback" type="function" required>
+  Function called with index (0-based)
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with generated items
+</ResponseField>
+</Accordion>
+
+<Accordion title="range()">
+Create a collection of numbers in a range.
+
+```javascript
+const numbers = Collection.range(1, 5);
+// Collection: [1, 2, 3, 4, 5]
+```
+
+<ParamField path="from" type="number" required>
+  Start of range (inclusive)
+</ParamField>
+
+<ParamField path="to" type="number" required>
+  End of range (inclusive)
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with range values
+</ResponseField>
+</Accordion>
+
+## Basic Operations
+
+<Accordion title="all()">
+Get all items as a plain array.
+
+```javascript
+const users = User.where('status', 'active').get();
+const array = users.all();
+```
+
+<ResponseField name="return" type="array">
+  Returns the underlying array
+</ResponseField>
+</Accordion>
+
+<Accordion title="count()">
+Get the number of items.
+
+```javascript
+const count = collection.count();
+console.log(`${count} items`);
+```
+
+<ResponseField name="return" type="number">
+  Returns the item count
+</ResponseField>
+</Accordion>
+
+<Accordion title="isEmpty()">
+Check if the collection is empty.
+
+```javascript
+if (users.isEmpty()) {
+  console.log('No users found');
+}
+```
+
+<ResponseField name="return" type="boolean">
+  Returns true if empty, false otherwise
+</ResponseField>
+</Accordion>
+
+<Accordion title="isNotEmpty()">
+Check if the collection is not empty.
+
+```javascript
+if (users.isNotEmpty()) {
+  console.log('Users found');
+}
+```
+
+<ResponseField name="return" type="boolean">
+  Returns true if not empty, false otherwise
+</ResponseField>
+</Accordion>
+
+<Accordion title="first()">
+Get the first item, optionally matching a callback.
+
+```javascript
+const first = users.first();
+const admin = users.first(user => user.role === 'admin');
+```
+
+<ParamField path="callback" type="function">
+  Optional filter function
+</ParamField>
+
+<ResponseField name="return" type="any|null">
+  Returns the first matching item or null
+</ResponseField>
+</Accordion>
+
+<Accordion title="last()">
+Get the last item, optionally matching a callback.
+
+```javascript
+const last = users.last();
+const lastActive = users.last(user => user.status === 'active');
+```
+
+<ParamField path="callback" type="function">
+  Optional filter function
+</ParamField>
+
+<ResponseField name="return" type="any|null">
+  Returns the last matching item or null
+</ResponseField>
+</Accordion>
+
+## Filtering
+
+<Accordion title="filter()">
+Filter items using a callback.
+
+```javascript
+const activeUsers = users.filter(user => user.status === 'active');
+const expensive = products.filter(p => p.price > 100);
+```
+
+<ParamField path="callback" type="function" required>
+  Function that returns true to keep the item
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new filtered Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="where()">
+Filter items where a property matches a value.
+
+```javascript
+const activeUsers = users.where('status', 'active');
+const highValueOrders = orders.where('total', '>', 1000);
+```
+
+<ParamField path="key" type="string" required>
+  Property name (supports dot notation for nested properties)
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator: `==`, `===`, `!=`, `!==`, `<`, `>`, `<=`, `>=` (defaults to `===`)
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to compare against
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new filtered Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereIn()">
+Filter items where property value is in an array.
+
+```javascript
+const users = collection.whereIn('role', ['admin', 'moderator']);
+```
+
+<ParamField path="key" type="string" required>
+  Property name
+</ParamField>
+
+<ParamField path="values" type="array" required>
+  Array of values to match
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new filtered Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereNotIn()">
+Filter items where property value is not in an array.
+
+```javascript
+const users = collection.whereNotIn('status', ['banned', 'suspended']);
+```
+
+<ParamField path="key" type="string" required>
+  Property name
+</ParamField>
+
+<ParamField path="values" type="array" required>
+  Array of values to exclude
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new filtered Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereNull()">
+Filter items where property is null.
+
+```javascript
+const incomplete = orders.whereNull('completed_at');
+```
+
+<ParamField path="key" type="string" required>
+  Property name
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new filtered Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereNotNull()">
+Filter items where property is not null.
+
+```javascript
+const verified = users.whereNotNull('verified_at');
+```
+
+<ParamField path="key" type="string" required>
+  Property name
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new filtered Collection
+</ResponseField>
+</Accordion>
+
+## Transformation
+
+<Accordion title="map()">
+Transform each item using a callback.
+
+```javascript
+const names = users.map(user => user.name);
+const doubled = numbers.map(n => n * 2);
+```
+
+<ParamField path="callback" type="function" required>
+  Function to transform each item
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with transformed items
+</ResponseField>
+</Accordion>
+
+<Accordion title="flatMap()">
+Map and flatten the results.
+
+```javascript
+const allTags = posts.flatMap(post => post.tags);
+```
+
+<ParamField path="callback" type="function" required>
+  Function that returns an array for each item
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new flattened Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="pluck()">
+Extract values for a given property.
+
+```javascript
+const emails = users.pluck('email');
+const nested = users.pluck('profile.address.city'); // Supports dot notation
+```
+
+<ParamField path="key" type="string" required>
+  Property name (supports dot notation)
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection of property values
+</ResponseField>
+</Accordion>
+
+<Accordion title="unique()">
+Get unique items, optionally by a property.
+
+```javascript
+const uniqueNumbers = Collection.make([1, 2, 2, 3, 3, 4]).unique();
+const uniqueStatuses = users.unique('status');
+```
+
+<ParamField path="key" type="string">
+  Optional property name to determine uniqueness
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with duplicates removed
+</ResponseField>
+</Accordion>
+
+## Sorting
+
+<Accordion title="sort()">
+Sort items using an optional comparator.
+
+```javascript
+const sorted = Collection.make([3, 1, 2]).sort();
+const custom = collection.sort((a, b) => b.priority - a.priority);
+```
+
+<ParamField path="callback" type="function">
+  Optional comparator function
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new sorted Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="sortBy()">
+Sort items by a property.
+
+```javascript
+const sorted = users.sortBy('name');
+const desc = users.sortBy('created_at', 'desc');
+```
+
+<ParamField path="key" type="string" required>
+  Property name to sort by
+</ParamField>
+
+<ParamField path="direction" type="string" default="asc">
+  Sort direction: `asc` or `desc`
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new sorted Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="sortByDesc()">
+Sort items by a property in descending order.
+
+```javascript
+const latest = posts.sortByDesc('created_at');
+```
+
+<ParamField path="key" type="string" required>
+  Property name to sort by
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new sorted Collection (descending)
+</ResponseField>
+</Accordion>
+
+<Accordion title="reverse()">
+Reverse the order of items.
+
+```javascript
+const reversed = collection.reverse();
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection in reverse order
+</ResponseField>
+</Accordion>
+
+## Chunking & Slicing
+
+<Accordion title="chunk()">
+Break the collection into smaller collections.
+
+```javascript
+const chunks = Collection.make([1, 2, 3, 4, 5, 6, 7]).chunk(3);
+// Collection of Collections: [[1,2,3], [4,5,6], [7]]
+
+chunks.each(chunk => {
+  console.log(chunk.all());
+});
+```
+
+<ParamField path="size" type="number" required>
+  Size of each chunk
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a Collection of Collection chunks
+</ResponseField>
+</Accordion>
+
+<Accordion title="slice()">
+Get a slice of the collection.
+
+```javascript
+const slice = collection.slice(2, 5);
+```
+
+<ParamField path="start" type="number" required>
+  Starting index
+</ParamField>
+
+<ParamField path="end" type="number">
+  Ending index (exclusive)
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with sliced items
+</ResponseField>
+</Accordion>
+
+<Accordion title="take()">
+Take the first n items.
+
+```javascript
+const topFive = users.sortByDesc('points').take(5);
+```
+
+<ParamField path="limit" type="number" required>
+  Number of items to take
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with first n items
+</ResponseField>
+</Accordion>
+
+<Accordion title="skip()">
+Skip the first n items.
+
+```javascript
+const afterTen = users.skip(10);
+```
+
+<ParamField path="count" type="number" required>
+  Number of items to skip
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection without first n items
+</ResponseField>
+</Accordion>
+
+<Accordion title="forPage()">
+Get items for a specific page.
+
+```javascript
+const page2 = users.forPage(2, 20); // Page 2, 20 items per page
+```
+
+<ParamField path="page" type="number" required>
+  Page number (1-based)
+</ParamField>
+
+<ParamField path="perPage" type="number" required>
+  Items per page
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with page items
+</ResponseField>
+</Accordion>
+
+## Grouping
+
+<Accordion title="groupBy()">
+Group items by a property.
+
+```javascript
+const byStatus = users.groupBy('status');
+// { active: Collection, pending: Collection, inactive: Collection }
+
+Object.keys(byStatus).forEach(status => {
+  console.log(`${status}: ${byStatus[status].count()}`);
+});
+```
+
+<ParamField path="key" type="string" required>
+  Property name to group by
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns an object with property values as keys and Collections as values
+</ResponseField>
+</Accordion>
+
+<Accordion title="keyBy()">
+Key items by a property.
+
+```javascript
+const byId = users.keyBy('id');
+const user42 = byId[42];
+```
+
+<ParamField path="key" type="string" required>
+  Property name to use as key
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns an object with property values as keys and items as values
+</ResponseField>
+</Accordion>
+
+## Aggregation
+
+<Accordion title="sum()">
+Sum numeric values, optionally by a property.
+
+```javascript
+const total = Collection.make([1, 2, 3, 4, 5]).sum(); // 15
+const revenue = orders.sum('total');
+```
+
+<ParamField path="key" type="string">
+  Optional property name to sum
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the sum
+</ResponseField>
+</Accordion>
+
+<Accordion title="avg()">
+Get the average value, optionally by a property.
+
+```javascript
+const average = Collection.make([1, 2, 3, 4, 5]).avg(); // 3
+const avgPrice = products.avg('price');
+```
+
+<ParamField path="key" type="string">
+  Optional property name to average
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the average
+</ResponseField>
+</Accordion>
+
+<Accordion title="max()">
+Get the maximum value, optionally by a property.
+
+```javascript
+const highest = Collection.make([1, 5, 3, 2]).max(); // 5
+const highestScore = users.max('score');
+```
+
+<ParamField path="key" type="string">
+  Optional property name
+</ParamField>
+
+<ResponseField name="return" type="number|null">
+  Returns the maximum value or null if empty
+</ResponseField>
+</Accordion>
+
+<Accordion title="min()">
+Get the minimum value, optionally by a property.
+
+```javascript
+const lowest = Collection.make([3, 1, 5, 2]).min(); // 1
+const lowestPrice = products.min('price');
+```
+
+<ParamField path="key" type="string">
+  Optional property name
+</ParamField>
+
+<ResponseField name="return" type="number|null">
+  Returns the minimum value or null if empty
+</ResponseField>
+</Accordion>
+
+## Boolean Checks
+
+<Accordion title="contains()">
+Check if collection contains a value or property match.
+
+```javascript
+const hasThree = Collection.make([1, 2, 3]).contains(3); // true
+const hasAdmin = users.contains('role', 'admin');
+```
+
+<ParamField path="key" type="string|any" required>
+  Value to find, or property name if second argument provided
+</ParamField>
+
+<ParamField path="value" type="any">
+  Optional property value to match
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  Returns true if found, false otherwise
+</ResponseField>
+</Accordion>
+
+<Accordion title="every()">
+Check if all items pass a test.
+
+```javascript
+const allActive = users.every(user => user.status === 'active');
+```
+
+<ParamField path="callback" type="function" required>
+  Test function
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  Returns true if all items pass, false otherwise
+</ResponseField>
+</Accordion>
+
+<Accordion title="some()">
+Check if any item passes a test.
+
+```javascript
+const hasAdmin = users.some(user => user.role === 'admin');
+```
+
+<ParamField path="callback" type="function" required>
+  Test function
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  Returns true if any item passes, false otherwise
+</ResponseField>
+</Accordion>
+
+## Iteration
+
+<Accordion title="each()">
+Iterate over items and execute a callback.
+
+```javascript
+users.each(user => {
+  console.log(user.name);
+});
+
+users.each((user, index) => {
+  console.log(`${index}: ${user.name}`);
+});
+```
+
+<ParamField path="callback" type="function" required>
+  Function called for each item
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns the collection for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="tap()">
+Execute a callback with the collection without affecting the chain.
+
+```javascript
+const result = users
+  .where('status', 'active')
+  .tap(collection => {
+    console.log(`Found ${collection.count()} active users`);
+  })
+  .sortBy('name')
+  .take(10);
+```
+
+<ParamField path="callback" type="function" required>
+  Function called with the collection
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns the collection for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="pipe()">
+Pass the collection through a callback and return the result.
+
+```javascript
+const total = users
+  .where('status', 'active')
+  .pipe(collection => collection.sum('points'));
+```
+
+<ParamField path="callback" type="function" required>
+  Function called with the collection
+</ParamField>
+
+<ResponseField name="return" type="any">
+  Returns the callback result
+</ResponseField>
+</Accordion>
+
+<Accordion title="reduce()">
+Reduce the collection to a single value.
+
+```javascript
+const total = Collection.make([1, 2, 3, 4]).reduce((sum, n) => sum + n, 0);
+
+const userMap = users.reduce((map, user) => {
+  map[user.id] = user;
+  return map;
+}, {});
+```
+
+<ParamField path="callback" type="function" required>
+  Reducer function
+</ParamField>
+
+<ParamField path="initial" type="any" required>
+  Initial value
+</ParamField>
+
+<ResponseField name="return" type="any">
+  Returns the reduced value
+</ResponseField>
+</Accordion>
+
+## Advanced Operations
+
+<Accordion title="collapse()">
+Collapse a collection of arrays into a single flat collection.
+
+```javascript
+const nested = Collection.make([[1, 2], [3, 4], [5]]);
+const flat = nested.collapse();
+// Collection: [1, 2, 3, 4, 5]
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a new flattened Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="flatten()">
+Flatten a nested collection to a specified depth.
+
+```javascript
+const nested = Collection.make([1, [2, [3, [4]]]]);
+const flat1 = nested.flatten(1); // [1, 2, [3, [4]]]
+const flatAll = nested.flatten(); // [1, 2, 3, 4]
+```
+
+<ParamField path="depth" type="number" default="Infinity">
+  Maximum depth to flatten
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new flattened Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="diff()">
+Get items that are not in another collection.
+
+```javascript
+const a = Collection.make([1, 2, 3, 4]);
+const b = Collection.make([2, 4, 6]);
+const diff = a.diff(b);
+// Collection: [1, 3]
+```
+
+<ParamField path="other" type="Collection|array" required>
+  Collection or array to compare
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with different items
+</ResponseField>
+</Accordion>
+
+<Accordion title="intersect()">
+Get items that are in both collections.
+
+```javascript
+const a = Collection.make([1, 2, 3, 4]);
+const b = Collection.make([2, 4, 6]);
+const common = a.intersect(b);
+// Collection: [2, 4]
+```
+
+<ParamField path="other" type="Collection|array" required>
+  Collection or array to intersect
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection with common items
+</ResponseField>
+</Accordion>
+
+<Accordion title="merge()">
+Merge another collection or array.
+
+```javascript
+const a = Collection.make([1, 2, 3]);
+const b = Collection.make([4, 5, 6]);
+const merged = a.merge(b);
+// Collection: [1, 2, 3, 4, 5, 6]
+```
+
+<ParamField path="other" type="Collection|array" required>
+  Collection or array to merge
+</ParamField>
+
+<ResponseField name="return" type="Collection">
+  Returns a new merged Collection
+</ResponseField>
+</Accordion>
+
+## Random & Shuffling
+
+<Accordion title="random()">
+Get random item(s) from the collection.
+
+```javascript
+const randomUser = users.random(); // Single item
+const randomThree = users.random(3); // Collection of 3 items
+```
+
+<ParamField path="count" type="number" default="1">
+  Number of random items to retrieve
+</ParamField>
+
+<ResponseField name="return" type="any|Collection">
+  Returns a single item if count=1, otherwise a Collection
+</ResponseField>
+</Accordion>
+
+<Accordion title="shuffle()">
+Randomly shuffle the collection.
+
+```javascript
+const shuffled = users.shuffle();
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a new shuffled Collection
+</ResponseField>
+</Accordion>
+
+## Conversion
+
+<Accordion title="toArray()">
+Convert to plain array, calling toJSON() on model instances.
+
+```javascript
+const users = User.all();
+const array = users.toArray();
+// Each user is converted via toJSON()
+```
+
+<ResponseField name="return" type="array">
+  Returns a plain array
+</ResponseField>
+</Accordion>
+
+<Accordion title="toJSON()">
+Convert to JSON-serializable array.
+
+```javascript
+const json = JSON.stringify(users.toJSON());
+```
+
+<ResponseField name="return" type="array">
+  Returns a JSON-serializable array
+</ResponseField>
+</Accordion>
+
+<Accordion title="values()">
+Get collection of values (for object collections).
+
+```javascript
+const values = collection.values();
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection of values
+</ResponseField>
+</Accordion>
+
+<Accordion title="keys()">
+Get collection of keys (for object collections).
+
+```javascript
+const keys = collection.keys();
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a new Collection of keys
+</ResponseField>
+</Accordion>
+
+## Complete Example
+
+```javascript
+// Fetch users and chain collection methods
+const result = User.all()
+  .where('status', 'active')
+  .where('points', '>', 100)
+  .sortByDesc('points')
+  .take(10)
+  .map(user => ({
+    id: user.id,
+    name: user.name,
+    points: user.points
+  }));
+
+result.each((user, index) => {
+  console.log(`${index + 1}. ${user.name}: ${user.points} points`);
+});
+
+// Complex transformations
+const stats = orders
+  .where('status', 'completed')
+  .groupBy('product_id');
+
+Object.keys(stats).forEach(productId => {
+  const productOrders = stats[productId];
+  console.log(`Product ${productId}:`);
+  console.log(`  Orders: ${productOrders.count()}`);
+  console.log(`  Revenue: $${productOrders.sum('total')}`);
+  console.log(`  Average: $${productOrders.avg('total')}`);
+});
+
+// Pagination and chunking
+const page = users.forPage(2, 20);
+const chunks = users.chunk(50);
+
+chunks.each((chunk, index) => {
+  console.log(`Processing batch ${index + 1}...`);
+  chunk.each(user => {
+    // Process each user
+  });
+});
+
+// Advanced filtering and transformation
+const report = Collection.make(rawData)
+  .filter(item => item.date >= '2024-01-01')
+  .map(item => ({
+    ...item,
+    category: item.type.toUpperCase(),
+    value: parseFloat(item.amount)
+  }))
+  .groupBy('category')
+  .pipe(groups => {
+    const summary = {};
+    Object.keys(groups).forEach(cat => {
+      summary[cat] = {
+        count: groups[cat].count(),
+        total: groups[cat].sum('value'),
+        avg: groups[cat].avg('value')
+      };
+    });
+    return summary;
+  });
+```

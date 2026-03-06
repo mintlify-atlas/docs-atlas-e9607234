@@ -1,0 +1,263 @@
+---
+title: "APPSQL"
+description: "Main entry point for ServiceSQL - manages database connection and provides access to core features"
+---
+
+## Overview
+
+The `APPSQL` class is the primary interface for ServiceSQL. It manages the connection to your Google Spreadsheet and provides access to query builders, models, schemas, and other features.
+
+## Initialization
+
+### init()
+
+Initialize APPSQL as a singleton instance.
+
+```javascript
+const db = APPSQL.init({ spreadsheetId: 'your-spreadsheet-id' });
+```
+
+<ParamField path="config" type="object" required>
+  Configuration object for APPSQL
+  
+  <ParamField path="config.spreadsheetId" type="string" required>
+    The ID of the Google Spreadsheet to use as database
+  </ParamField>
+</ParamField>
+
+<ResponseField name="return" type="APPSQL">
+  Returns the singleton APPSQL instance
+</ResponseField>
+
+<Note>
+  `init()` follows the singleton pattern. Calling it multiple times returns the same instance.
+</Note>
+
+### getInstance()
+
+Get the existing APPSQL singleton instance.
+
+```javascript
+const db = APPSQL.getInstance();
+```
+
+<ResponseField name="return" type="APPSQL">
+  Returns the existing APPSQL instance
+</ResponseField>
+
+<Warning>
+  Throws an error if `init()` has not been called first.
+</Warning>
+
+## Core Methods
+
+### table()
+
+Create a query builder for a specific sheet/table.
+
+```javascript
+const users = db.table('Users')
+  .where('status', 'active')
+  .orderBy('created_at', 'desc')
+  .get();
+```
+
+<ParamField path="sheetName" type="string" required>
+  Name of the sheet to query
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns a new QueryBuilder instance for the specified sheet
+</ResponseField>
+
+### model()
+
+Register and configure a Model class with the database.
+
+```javascript
+class User extends Model {
+  static tableName = 'Users';
+  static _timestamps = true;
+  static _fillable = ['name', 'email', 'status'];
+}
+
+const UserModel = db.model(User);
+
+// Now you can use the model
+const user = User.find(1);
+```
+
+<ParamField path="ModelClass" type="class" required>
+  A Model class to register with the database
+</ParamField>
+
+<ResponseField name="return" type="class">
+  Returns the registered Model class with database connection configured
+</ResponseField>
+
+#### What model() Does
+
+1. **Links the database connection**: Assigns `app`, `driver`, and `_db` to the Model class
+2. **Resolves table name**: Uses `tableName`, `table`, or the class name as the table
+3. **Calls boot()**: Executes the Model's `boot()` method once for initialization
+4. **Enables queries**: Allows the Model to execute database queries
+
+<Accordion title="Example: Complete Model Registration">
+```javascript
+class Product extends Model {
+  static tableName = 'Products';
+  static _primaryKey = 'id';
+  static _timestamps = true;
+  static _fillable = ['name', 'price', 'stock'];
+  static _casts = {
+    price: 'float',
+    stock: 'integer'
+  };
+  
+  static boot() {
+    console.log('Product model booted');
+  }
+}
+
+// Register the model
+db.model(Product);
+
+// Now you can use it
+const product = Product.create({
+  name: 'Laptop',
+  price: 999.99,
+  stock: 50
+});
+```
+</Accordion>
+
+## Additional Features
+
+### schema()
+
+Access schema management features for creating and modifying sheets.
+
+```javascript
+const schema = db.schema();
+```
+
+<ResponseField name="return" type="Schema">
+  Returns a Schema builder instance
+</ResponseField>
+
+### gmail()
+
+Access Gmail integration features.
+
+```javascript
+const gmail = db.gmail();
+```
+
+<ResponseField name="return" type="GmailBuilder">
+  Returns a GmailBuilder instance for email operations
+</ResponseField>
+
+### triggers()
+
+Manage Apps Script triggers.
+
+```javascript
+const triggers = db.triggers();
+```
+
+<ResponseField name="return" type="TriggerBuilder">
+  Returns a TriggerBuilder instance
+</ResponseField>
+
+### cache()
+
+Access caching utilities.
+
+```javascript
+const cache = db.cache();
+```
+
+<ResponseField name="return" type="CacheBuilder">
+  Returns a CacheBuilder instance for caching operations
+</ResponseField>
+
+### utils()
+
+Access utility functions.
+
+```javascript
+const utils = db.utils();
+```
+
+<ResponseField name="return" type="Utils">
+  Returns a Utils instance with helper methods
+</ResponseField>
+
+### db()
+
+Create a table instance directly.
+
+```javascript
+const table = db.db('Users', ['id', 'name', 'email']);
+```
+
+<ParamField path="name" type="string" required>
+  Name of the table
+</ParamField>
+
+<ParamField path="columns" type="array" default="[]">
+  Array of column names
+</ParamField>
+
+<ResponseField name="return" type="Table">
+  Returns a Table instance
+</ResponseField>
+
+## Complete Example
+
+```javascript
+// Initialize the database
+const db = APPSQL.init({ 
+  spreadsheetId: '1abc...xyz' 
+});
+
+// Define a model
+class User extends Model {
+  static tableName = 'Users';
+  static _timestamps = true;
+  static _fillable = ['name', 'email', 'role'];
+}
+
+// Register the model
+db.model(User);
+
+// Use the model
+const activeUsers = User
+  .where('status', 'active')
+  .orderBy('created_at', 'desc')
+  .get();
+
+// Or use the query builder directly
+const orders = db.table('Orders')
+  .where('status', 'pending')
+  .where('total', '>', 100)
+  .get();
+
+// In other files, get the instance
+const db2 = APPSQL.getInstance();
+const products = db2.table('Products').all();
+```
+
+## Properties
+
+<ResponseField name="spreadsheetId" type="Spreadsheet">
+  The opened Google Spreadsheet instance
+</ResponseField>
+
+<ResponseField name="driver" type="SheetDriver">
+  The underlying driver that handles sheet operations
+</ResponseField>
+
+<ResponseField name="instance" type="APPSQL" static>
+  Static property holding the singleton instance
+</ResponseField>

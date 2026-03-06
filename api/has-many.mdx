@@ -1,0 +1,333 @@
+---
+title: 'HasMany'
+description: 'Define one-to-many (1:N) relationships where a parent record has multiple related records'
+icon: 'arrows-split-up-and-left'
+---
+
+## Overview
+
+The `hasMany` relationship represents a **one-to-many (1:N)** association where a single parent record has multiple related records. For example, a User has many Posts.
+
+This is the inverse of the `belongsTo` relationship.
+
+## Method Signature
+
+```javascript
+hasMany(RelatedClass, foreignKey = null, localKey = 'id')
+```
+
+<ParamField path="RelatedClass" type="Model" required>
+  The related Model class that belongs to this model
+</ParamField>
+
+<ParamField path="foreignKey" type="string" default="{CurrentModel._table}_id">
+  The foreign key column in the related model that references this model.
+  
+  If not specified, defaults to the current model's table name + `_id` (e.g., `user_id` if called from User model).
+</ParamField>
+
+<ParamField path="localKey" type="string" default="id">
+  The primary key column in the current model that the foreign key references.
+  
+  Typically the `id` column.
+</ParamField>
+
+## Basic Usage
+
+### Define the Relationship
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+
+  posts() {
+    return this.hasMany(Post, "user_id", "id");
+  }
+}
+```
+
+### Query with Eager Loading
+
+Use `with()` to load the relationship efficiently:
+
+```javascript
+// Load users with their posts
+const users = User.with("posts").get();
+
+users.each(user => {
+  Logger.log(`${user.name} has ${user.posts.count()} posts`);
+  
+  // posts is a Collection, not an array
+  user.posts.each(post => {
+    Logger.log(`  - ${post.title}`);
+  });
+});
+```
+
+## Return Value
+
+When eager loaded with `with()`, the relationship property returns a **Collection** instance, not a plain array.
+
+<Note>
+  `hasMany` always returns a **Collection** with powerful filtering, sorting, and aggregation methods.
+</Note>
+
+```javascript
+const user = User.with("posts").first();
+
+// user.posts is a Collection
+const publishedPosts = user.posts.where("published", true);
+const totalViews = user.posts.sum("views");
+const avgRating = user.posts.avg("rating");
+```
+
+## Examples
+
+### User Has Many Posts
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  
+  posts() {
+    return this.hasMany(Post, "user_id", "id");
+  }
+}
+
+class Post extends Model {
+  static _table = "Posts";
+  
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+
+// Usage
+const users = User.with("posts").get();
+
+users.each(user => {
+  const postCount = user.posts.count();
+  const totalViews = user.posts.sum("views");
+  
+  Logger.log(`${user.name}: ${postCount} posts, ${totalViews} views`);
+});
+```
+
+### Post Has Many Comments
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+  
+  comments() {
+    return this.hasMany(Comment, "post_id");
+  }
+}
+
+class Comment extends Model {
+  static _table = "Comments";
+  
+  post() {
+    return this.belongsTo(Post, "post_id");
+  }
+}
+
+// Load posts with comments
+const posts = Post.with("comments").get();
+
+posts.each(post => {
+  Logger.log(`${post.title} - ${post.comments.count()} comments`);
+  
+  // Filter approved comments only
+  const approvedComments = post.comments.where("approved", true);
+  
+  approvedComments.each(comment => {
+    Logger.log(`  - ${comment.text}`);
+  });
+});
+```
+
+### Nested Relationships
+
+```javascript
+// Load users with their posts and each post's comments
+const users = User.with("posts.comments").get();
+
+users.each(user => {
+  Logger.log(`User: ${user.name}`);
+  
+  user.posts.each(post => {
+    Logger.log(`  Post: ${post.title}`);
+    Logger.log(`    Comments: ${post.comments.count()}`);
+  });
+});
+```
+
+## Working with Collections
+
+Since `hasMany` returns a Collection, you have access to powerful methods:
+
+```javascript
+const user = User.with("posts").first();
+
+// Filter posts
+const published = user.posts.where("published", true);
+const recent = user.posts.where("created_at", ">", "2024-01-01");
+
+// Sort posts
+const topPosts = user.posts.sortByDesc("views").take(5);
+
+// Aggregate data
+const totalViews = user.posts.sum("views");
+const avgViews = user.posts.avg("views");
+const maxViews = user.posts.max("views");
+
+// Group posts
+const byCategory = user.posts.groupBy("category");
+
+// Get specific fields
+const titles = user.posts.pluck("title");
+
+// Convert to array if needed
+const postsArray = user.posts.all();
+const postsJSON = user.posts.toJSON();
+```
+
+## Database Schema
+
+For a `hasMany` relationship, the **foreign key** is stored in the **related model's table**:
+
+```
+Users table:
+┌────┬──────────┬─────────────────┐
+│ id │ name     │ email           │
+├────┼──────────┼─────────────────┤
+│ 1  │ John Doe │ john@example.com│
+│ 2  │ Jane Doe │ jane@example.com│
+└────┴──────────┴─────────────────┘
+
+Posts table:
+┌────┬─────────┬────────────────┬─────────┐
+│ id │ user_id │ title          │ body    │
+├────┼─────────┼────────────────┼─────────┤
+│ 1  │ 1       │ First Post     │ ...     │
+│ 2  │ 1       │ Second Post    │ ...     │
+│ 3  │ 2       │ Jane's Post    │ ...     │
+└────┴─────────┴────────────────┴─────────┘
+```
+
+User 1 has 2 posts (post 1 and post 2).
+
+## Multiple Relationships
+
+Define multiple `hasMany` relationships in a single model:
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  
+  posts() {
+    return this.hasMany(Post, "user_id");
+  }
+  
+  comments() {
+    return this.hasMany(Comment, "user_id");
+  }
+  
+  orders() {
+    return this.hasMany(Order, "customer_id", "id");
+  }
+}
+
+// Load all relationships
+const users = User.with("posts", "comments", "orders").get();
+
+users.each(user => {
+  Logger.log(`${user.name}:`);
+  Logger.log(`  Posts: ${user.posts.count()}`);
+  Logger.log(`  Comments: ${user.comments.count()}`);
+  Logger.log(`  Orders: ${user.orders.count()}`);
+});
+```
+
+## Filtered Relationships with Constraints
+
+<Warning>
+  Relationship constraints are mentioned in the documentation but may require additional configuration. Check the source code for constraint implementation details.
+</Warning>
+
+You can define filtered versions of relationships:
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  
+  // All posts
+  posts() {
+    return this.hasMany(Post, "user_id");
+  }
+  
+  // Only published posts (conceptual example)
+  publishedPosts() {
+    return this.hasMany(Post, "user_id", "id").where(query => {
+      return query.where("published", true)
+                  .orderBy("created_at", "desc");
+    });
+  }
+}
+```
+
+## Performance Tips
+
+<Tip>
+  Always use eager loading with `with()` to load related records efficiently and avoid N+1 queries.
+</Tip>
+
+### Good: Eager Loading (2 queries)
+
+```javascript
+// ✅ Efficient: 2 queries (Users + Posts)
+const users = User.with("posts").get();
+
+users.each(user => {
+  user.posts.each(post => {
+    Logger.log(post.title);  // No additional queries
+  });
+});
+```
+
+### Bad: N+1 Problem (N+1 queries)
+
+```javascript
+// ❌ Inefficient: 1 + N queries
+const users = User.all();
+
+users.each(user => {
+  const posts = Post.where("user_id", user.id).get();  // Query per user!
+  posts.each(post => Logger.log(post.title));
+});
+```
+
+### Load Only What You Need
+
+```javascript
+// Conditionally load relationships
+let query = User.query();
+
+if (includePosts) {
+  query = query.with("posts");
+}
+
+if (includeComments) {
+  query = query.with("comments");
+}
+
+const users = query.get();
+```
+
+## Related Methods
+
+- [BelongsTo](/api/belongs-to) - Define many-to-one relationships (inverse of hasMany)
+- [HasOne](/api/has-one) - Define one-to-one relationships
+- [ManyToMany](/api/many-to-many) - Define many-to-many relationships with pivot tables
+- [Collection](/api/collection) - Work with collections of models

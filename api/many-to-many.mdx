@@ -1,0 +1,440 @@
+---
+title: 'ManyToMany'
+description: 'Define many-to-many (N:N) relationships using a pivot table to connect two models'
+icon: 'grid-2'
+---
+
+## Overview
+
+The `manyToMany` relationship represents a **many-to-many (N:N)** association where records from one model can relate to multiple records from another model, and vice versa. For example, Posts and Tags - a post can have many tags, and a tag can belong to many posts.
+
+This relationship requires a **pivot table** (junction table) to store the associations.
+
+## Method Signature
+
+```javascript
+manyToMany(RelatedClass, pivotTable, parentKey = null, relatedKey = null)
+```
+
+<ParamField path="RelatedClass" type="Model" required>
+  The related Model class to connect with this many-to-many relationship
+</ParamField>
+
+<ParamField path="pivotTable" type="string" required>
+  The name of the pivot (junction) table that stores the relationship mappings.
+  
+  This table should contain foreign keys referencing both models.
+</ParamField>
+
+<ParamField path="parentKey" type="string" default="{CurrentModel._table}_id">
+  The foreign key column in the pivot table that references the current model.
+  
+  If not specified, defaults to the current model's table name + `_id` (e.g., `post_id` for Post model).
+</ParamField>
+
+<ParamField path="relatedKey" type="string" default="{RelatedClass._table}_id">
+  The foreign key column in the pivot table that references the related model.
+  
+  If not specified, defaults to the related model's table name + `_id` (e.g., `tag_id` for Tag model).
+</ParamField>
+
+## Basic Usage
+
+### Define the Relationship
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+
+  tags() {
+    return this.manyToMany(Tag, "PostTag", "post_id", "tag_id");
+  }
+}
+
+class Tag extends Model {
+  static _table = "Tags";
+
+  posts() {
+    return this.manyToMany(Post, "PostTag", "tag_id", "post_id");
+  }
+}
+```
+
+### Query with Eager Loading
+
+Use `with()` to load the relationship efficiently:
+
+```javascript
+// Load posts with their tags
+const posts = Post.with("tags").get();
+
+posts.each(post => {
+  Logger.log(`${post.title} - Tags:`);
+  
+  // tags is a Collection
+  post.tags.each(tag => {
+    Logger.log(`  - ${tag.name}`);
+  });
+});
+```
+
+## Return Value
+
+When eager loaded with `with()`, the relationship property returns a **Collection** instance containing all related models.
+
+<Note>
+  `manyToMany` always returns a **Collection**, even if there are no related records (empty collection).
+</Note>
+
+```javascript
+const post = Post.with("tags").first();
+
+// post.tags is a Collection
+Logger.log(`Tag count: ${post.tags.count()}`);
+
+post.tags.each(tag => {
+  Logger.log(tag.name);
+});
+```
+
+## Pivot Table Structure
+
+The pivot table stores the relationships between the two models:
+
+```
+Posts table:
+┌────┬─────────────────┐
+│ id │ title           │
+├────┼─────────────────┤
+│ 1  │ First Post      │
+│ 2  │ Second Post     │
+└────┴─────────────────┘
+
+Tags table:
+┌────┬─────────────┐
+│ id │ name        │
+├────┼─────────────┤
+│ 1  │ JavaScript  │
+│ 2  │ Tutorial    │
+│ 3  │ Advanced    │
+└────┴─────────────┘
+
+PostTag table (pivot):
+┌─────────┬────────┐
+│ post_id │ tag_id │
+├─────────┼────────┤
+│ 1       │ 1      │  Post 1 has Tag 1 (JavaScript)
+│ 1       │ 2      │  Post 1 has Tag 2 (Tutorial)
+│ 2       │ 1      │  Post 2 has Tag 1 (JavaScript)
+│ 2       │ 3      │  Post 2 has Tag 3 (Advanced)
+└─────────┴────────┘
+```
+
+- Post 1 has tags: JavaScript, Tutorial
+- Post 2 has tags: JavaScript, Advanced
+- JavaScript tag appears in: Post 1, Post 2
+
+## Examples
+
+### Posts and Tags
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+  
+  tags() {
+    return this.manyToMany(Tag, "PostTag", "post_id", "tag_id");
+  }
+}
+
+class Tag extends Model {
+  static _table = "Tags";
+  
+  posts() {
+    return this.manyToMany(Post, "PostTag", "tag_id", "post_id");
+  }
+}
+
+// Get all posts with their tags
+const posts = Post.with("tags").get();
+
+posts.each(post => {
+  const tagNames = post.tags.pluck("name").all().join(", ");
+  Logger.log(`${post.title}: ${tagNames}`);
+});
+
+// Get all tags with their posts
+const tags = Tag.with("posts").get();
+
+tags.each(tag => {
+  Logger.log(`Tag: ${tag.name}`);
+  Logger.log(`Used in ${tag.posts.count()} posts`);
+});
+```
+
+### Students and Courses
+
+```javascript
+class Student extends Model {
+  static _table = "Students";
+  
+  courses() {
+    return this.manyToMany(Course, "Enrollments", "student_id", "course_id");
+  }
+}
+
+class Course extends Model {
+  static _table = "Courses";
+  
+  students() {
+    return this.manyToMany(Student, "Enrollments", "course_id", "student_id");
+  }
+}
+
+// Get student's enrolled courses
+const students = Student.with("courses").get();
+
+students.each(student => {
+  Logger.log(`${student.name} is enrolled in:`);
+  
+  student.courses.each(course => {
+    Logger.log(`  - ${course.title}`);
+  });
+});
+
+// Get course enrollment count
+const courses = Course.with("students").get();
+
+courses.each(course => {
+  Logger.log(`${course.title}: ${course.students.count()} students`);
+});
+```
+
+### Products and Categories
+
+```javascript
+class Product extends Model {
+  static _table = "Products";
+  
+  categories() {
+    return this.manyToMany(Category, "ProductCategory", "product_id", "category_id");
+  }
+}
+
+class Category extends Model {
+  static _table = "Categories";
+  
+  products() {
+    return this.manyToMany(Product, "ProductCategory", "category_id", "product_id");
+  }
+}
+
+// Find products in multiple categories
+const products = Product.with("categories").get();
+
+products.each(product => {
+  const categoryNames = product.categories.pluck("name").all();
+  Logger.log(`${product.name}: ${categoryNames.join(", ")}`);
+});
+```
+
+## Working with Collections
+
+Since `manyToMany` returns a Collection, you have access to powerful methods:
+
+```javascript
+const post = Post.with("tags").first();
+
+// Count related records
+const tagCount = post.tags.count();
+
+// Get specific fields
+const tagNames = post.tags.pluck("name").all();
+
+// Filter related records
+const popularTags = post.tags.where("popularity", ">", 100);
+
+// Sort related records
+const sortedTags = post.tags.sortBy("name");
+
+// Check if collection has items
+if (post.tags.isEmpty()) {
+  Logger.log("Post has no tags");
+}
+
+// Convert to array
+const tagsArray = post.tags.all();
+const tagsJSON = post.tags.toJSON();
+```
+
+## Nested Relationships
+
+Load relationships through many-to-many connections:
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+  
+  tags() {
+    return this.manyToMany(Tag, "PostTag", "post_id", "tag_id");
+  }
+  
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+
+// Load posts with tags and authors
+const posts = Post.with("tags", "author").get();
+
+posts.each(post => {
+  Logger.log(`${post.title} by ${post.author.name}`);
+  Logger.log(`Tags: ${post.tags.pluck("name").all().join(", ")}`);
+});
+```
+
+## Default Keys Convention
+
+If you follow naming conventions, you can omit the key parameters:
+
+```javascript
+// Explicit keys (verbose)
+class Post extends Model {
+  static _table = "Posts";
+  
+  tags() {
+    return this.manyToMany(Tag, "PostTag", "post_id", "tag_id");
+  }
+}
+
+// Using defaults (assuming PostTag has post_id and tag_id columns)
+class Post extends Model {
+  static _table = "Posts";
+  
+  tags() {
+    return this.manyToMany(Tag, "PostTag");
+  }
+}
+```
+
+## Bidirectional Relationships
+
+Define the relationship from both sides for full flexibility:
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+  
+  tags() {
+    return this.manyToMany(Tag, "PostTag", "post_id", "tag_id");
+  }
+}
+
+class Tag extends Model {
+  static _table = "Tags";
+  
+  posts() {
+    // Note: parentKey and relatedKey are swapped
+    return this.manyToMany(Post, "PostTag", "tag_id", "post_id");
+  }
+}
+
+// Query from either side
+const post = Post.with("tags").first();
+Logger.log(post.tags.pluck("name"));
+
+const tag = Tag.with("posts").first();
+Logger.log(tag.posts.pluck("title"));
+```
+
+## Performance Tips
+
+<Tip>
+  Always use eager loading with `with()` to load the pivot table and related records efficiently.
+</Tip>
+
+### Good: Eager Loading (3 queries)
+
+```javascript
+// ✅ Efficient: 3 queries (Posts + Pivot + Tags)
+const posts = Post.with("tags").get();
+
+posts.each(post => {
+  post.tags.each(tag => {
+    Logger.log(tag.name);  // No additional queries
+  });
+});
+```
+
+### Bad: N+1 Problem (Many queries)
+
+```javascript
+// ❌ Inefficient: Multiple queries for each post
+const posts = Post.all();
+
+posts.each(post => {
+  // Manual pivot lookup - very slow!
+  const pivotRows = /* query PostTag where post_id = post.id */;
+  pivotRows.forEach(pivot => {
+    const tag = Tag.find(pivot.tag_id);  // Additional query per tag!
+    Logger.log(tag.name);
+  });
+});
+```
+
+## Common Use Cases
+
+### E-commerce: Products and Orders
+
+```javascript
+class Order extends Model {
+  products() {
+    return this.manyToMany(Product, "OrderProduct", "order_id", "product_id");
+  }
+}
+
+class Product extends Model {
+  orders() {
+    return this.manyToMany(Order, "OrderProduct", "product_id", "order_id");
+  }
+}
+```
+
+### Social Network: Users and Roles
+
+```javascript
+class User extends Model {
+  roles() {
+    return this.manyToMany(Role, "UserRole", "user_id", "role_id");
+  }
+}
+
+class Role extends Model {
+  users() {
+    return this.manyToMany(User, "UserRole", "role_id", "user_id");
+  }
+}
+```
+
+### Content Management: Articles and Authors
+
+```javascript
+class Article extends Model {
+  authors() {
+    return this.manyToMany(Author, "ArticleAuthor", "article_id", "author_id");
+  }
+}
+
+class Author extends Model {
+  articles() {
+    return this.manyToMany(Article, "ArticleAuthor", "author_id", "article_id");
+  }
+}
+```
+
+## Related Methods
+
+- [BelongsTo](/api/belongs-to) - Define many-to-one relationships
+- [HasMany](/api/has-many) - Define one-to-many relationships
+- [HasOne](/api/has-one) - Define one-to-one relationships
+- [Collection](/api/collection) - Work with collections of models

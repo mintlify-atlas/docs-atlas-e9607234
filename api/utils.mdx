@@ -1,0 +1,512 @@
+---
+title: Utils
+description: Utility functions for date/time formatting and Chilean RUT validation
+---
+
+The `Utils` class provides helper functions for working with dates, times, and Chilean RUT (Rol Único Tributario) numbers in Apps Script.
+
+## Constructor
+
+```javascript
+const utils = new Utils()
+```
+
+## Date and Time Methods
+
+### now()
+
+Get current date and time in `dd/MM/yyyy HH:mm:ss` format.
+
+```javascript
+const timestamp = utils.now()
+```
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+const now = utils.now();
+Logger.log(now); // "06/03/2026 10:15:30"
+```
+
+### nowDate()
+
+Get current date in `dd/MM/yyyy` format.
+
+```javascript
+const date = utils.nowDate()
+```
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+const today = utils.nowDate();
+Logger.log(today); // "06/03/2026"
+```
+
+### nowTime()
+
+Get current time in a custom format.
+
+```javascript
+utils.nowTime(format)
+```
+
+<ParamField path="format" type="string" default="HH:mm:ss">
+  Time format string (Apps Script date format)
+</ParamField>
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+
+// Default format
+const time1 = utils.nowTime(); // "10:15:30"
+
+// Custom format
+const time2 = utils.nowTime("HH:mm"); // "10:15"
+const time3 = utils.nowTime("hh:mm a"); // "10:15 AM"
+```
+
+### nowTimeHM()
+
+Get current time in `HH:mm` format (shortcut for `nowTime("HH:mm")`).
+
+```javascript
+const time = utils.nowTimeHM()
+```
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+const time = utils.nowTimeHM();
+Logger.log(time); // "10:15"
+```
+
+### nowHour()
+
+Get current hour in `HH` format (shortcut for `nowTime("HH")`).
+
+```javascript
+const hour = utils.nowHour()
+```
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+const hour = utils.nowHour();
+Logger.log(hour); // "10"
+```
+
+## RUT Methods
+
+Chilean RUT (Rol Único Tributario) validation and formatting utilities.
+
+### rutClean()
+
+Remove all non-digit characters from a RUT (except K/k) and normalize.
+
+```javascript
+utils.rutClean(rut)
+```
+
+<ParamField path="rut" type="string" required>
+  RUT string to clean
+</ParamField>
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+
+const cleaned = utils.rutClean("12.345.678-9");
+Logger.log(cleaned); // "123456789"
+
+const withK = utils.rutClean("12.345.678-K");
+Logger.log(withK); // "12345678K"
+```
+
+### rutSplit()
+
+Split a RUT into number and verification digit (DV).
+
+```javascript
+utils.rutSplit(rut)
+```
+
+<ParamField path="rut" type="string" required>
+  RUT string to split
+</ParamField>
+
+Returns an object with `number` and `dv` properties.
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+
+const parts = utils.rutSplit("12.345.678-9");
+Logger.log(parts.number); // "12345678"
+Logger.log(parts.dv);     // "9"
+
+const withK = utils.rutSplit("12.345.678-K");
+Logger.log(withK.number); // "12345678"
+Logger.log(withK.dv);     // "K"
+```
+
+### rutComputeDV()
+
+Calculate the verification digit (DV) for a RUT number.
+
+```javascript
+utils.rutComputeDV(numberStr)
+```
+
+<ParamField path="numberStr" type="string" required>
+  RUT number (without verification digit)
+</ParamField>
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+
+const dv1 = utils.rutComputeDV("12345678");
+Logger.log(dv1); // "5"
+
+const dv2 = utils.rutComputeDV("11111111");
+Logger.log(dv2); // "K"
+
+const dv3 = utils.rutComputeDV("22222222");
+Logger.log(dv3); // "2"
+```
+
+### rutValidate()
+
+Validate if a RUT has a correct verification digit.
+
+```javascript
+utils.rutValidate(rut)
+```
+
+<ParamField path="rut" type="string" required>
+  Complete RUT to validate
+</ParamField>
+
+Returns `true` if valid, `false` otherwise.
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+
+const valid = utils.rutValidate("12.345.678-5");
+Logger.log(valid); // true
+
+const invalid = utils.rutValidate("12.345.678-9");
+Logger.log(invalid); // false
+```
+
+### rutFormat()
+
+Format a RUT with dots and dash (e.g., `12.345.678-9`).
+
+```javascript
+utils.rutFormat(rut)
+```
+
+<ParamField path="rut" type="string" required>
+  RUT to format
+</ParamField>
+
+**Example:**
+
+```javascript
+const utils = new Utils();
+
+const formatted = utils.rutFormat("123456785");
+Logger.log(formatted); // "12.345.678-5"
+
+const fromDirty = utils.rutFormat("12.345.678-5");
+Logger.log(fromDirty); // "12.345.678-5"
+```
+
+## Complete Examples
+
+### Timestamping Records
+
+```javascript
+function createUser(name, email) {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const users = db.table("Users");
+  const utils = new Utils();
+
+  users.insert({
+    name: name,
+    email: email,
+    created_at: utils.now(),
+    created_date: utils.nowDate(),
+    created_time: utils.nowTime()
+  });
+}
+```
+
+### Model Integration with RUT
+
+```javascript
+class Customer extends Model {
+  static _table = "Customers";
+  static _fillable = ["name", "rut", "email"];
+
+  setRutAttribute(value) {
+    const utils = new Utils();
+    const clean = utils.rutClean(value);
+    
+    if (!utils.rutValidate(clean)) {
+      throw new Error("Invalid RUT: " + value);
+    }
+    
+    return utils.rutFormat(clean);
+  }
+
+  getRutNumberAttribute() {
+    const utils = new Utils();
+    const parts = utils.rutSplit(this.rut);
+    return parts.number;
+  }
+
+  getRutDvAttribute() {
+    const utils = new Utils();
+    const parts = utils.rutSplit(this.rut);
+    return parts.dv;
+  }
+}
+
+Customer.use(db);
+
+// Usage
+const customer = Customer.create({
+  name: "Juan Pérez",
+  rut: "12.345.678-5",
+  email: "juan@example.com"
+});
+
+Logger.log(customer.rut);        // "12.345.678-5" (formatted)
+Logger.log(customer.rut_number); // "12345678"
+Logger.log(customer.rut_dv);     // "5"
+```
+
+### Activity Log with Timestamps
+
+```javascript
+function logActivity(userId, action, details) {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const logs = db.table("ActivityLog");
+  const utils = new Utils();
+
+  logs.insert({
+    user_id: userId,
+    action: action,
+    details: details,
+    date: utils.nowDate(),
+    time: utils.nowTimeHM(),
+    timestamp: utils.now()
+  });
+}
+
+// Usage
+logActivity(1, "login", "User logged in from web");
+logActivity(1, "update_profile", "Changed email address");
+```
+
+### RUT Validation Form
+
+```javascript
+function validateCustomerForm(formData) {
+  const utils = new Utils();
+  const errors = [];
+
+  // Validate name
+  if (!formData.name || formData.name.trim() === "") {
+    errors.push("Name is required");
+  }
+
+  // Validate RUT
+  if (!formData.rut) {
+    errors.push("RUT is required");
+  } else {
+    const cleanRut = utils.rutClean(formData.rut);
+    if (!utils.rutValidate(cleanRut)) {
+      errors.push("Invalid RUT format or verification digit");
+    }
+  }
+
+  if (errors.length > 0) {
+    return { valid: false, errors: errors };
+  }
+
+  // Normalize RUT before saving
+  return {
+    valid: true,
+    data: {
+      name: formData.name.trim(),
+      rut: utils.rutFormat(utils.rutClean(formData.rut)),
+      created_at: utils.now()
+    }
+  };
+}
+
+// Usage
+const result = validateCustomerForm({
+  name: "María González",
+  rut: "98765432-1"
+});
+
+if (result.valid) {
+  // Save to database
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  db.table("Customers").insert(result.data);
+} else {
+  Logger.log("Validation errors:", result.errors);
+}
+```
+
+### Generate RUT with Computed DV
+
+```javascript
+function generateRutWithDV(rutNumber) {
+  const utils = new Utils();
+  
+  // Clean the number (remove any non-digits)
+  const cleanNumber = String(rutNumber).replace(/\D/g, "");
+  
+  // Compute the verification digit
+  const dv = utils.rutComputeDV(cleanNumber);
+  
+  // Format and return
+  return utils.rutFormat(cleanNumber + dv);
+}
+
+// Usage
+const rut1 = generateRutWithDV("12345678");
+Logger.log(rut1); // "12.345.678-5"
+
+const rut2 = generateRutWithDV("11111111");
+Logger.log(rut2); // "11.111.111-K"
+```
+
+### Daily Report with Timestamps
+
+```javascript
+function generateDailyReport() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const utils = new Utils();
+  const reportDate = utils.nowDate();
+  const reportTime = utils.nowTime();
+
+  // Gather data
+  const orders = db.table("Orders")
+    .query()
+    .where("created_date", reportDate)
+    .get();
+
+  // Create report
+  const report = {
+    date: reportDate,
+    time: reportTime,
+    total_orders: orders.length,
+    generated_at: utils.now()
+  };
+
+  // Save report
+  db.table("DailyReports").insert(report);
+
+  Logger.log(`Report generated at ${report.generated_at}`);
+  return report;
+}
+```
+
+## Best Practices
+
+<Note>
+  **DO**: Use Utils for consistent date formatting
+  
+  ```javascript
+  const utils = new Utils();
+  const timestamp = utils.now(); // Always "dd/MM/yyyy HH:mm:ss"
+  ```
+</Note>
+
+<Note>
+  **DO**: Centralize RUT validation in Utils
+  
+  ```javascript
+  function isRutValid(rut) {
+    const utils = new Utils();
+    return utils.rutValidate(rut);
+  }
+  ```
+</Note>
+
+<Note>
+  **DO**: Format RUTs before storing in database
+  
+  ```javascript
+  const utils = new Utils();
+  const formattedRut = utils.rutFormat(utils.rutClean(userInput));
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Assume rutValidate throws errors
+  
+  ```javascript
+  // ❌ Wrong - returns boolean, doesn't throw
+  try {
+    utils.rutValidate("xxx");
+  } catch (e) {
+    // This won't catch anything
+  }
+  
+  // ✅ Correct - check boolean
+  if (!utils.rutValidate("xxx")) {
+    throw new Error("Invalid RUT");
+  }
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Mix date formats in your database
+  
+  ```javascript
+  // ❌ Bad - inconsistent formats
+  sheet.appendRow([utils.now(), new Date(), "2026-03-06"]);
+  
+  // ✅ Good - consistent format
+  sheet.appendRow([utils.nowDate(), utils.nowTime()]);
+  ```
+</Note>
+
+## Method Summary
+
+| Category | Methods |
+|----------|--------|
+| **Date/Time** | `now()`, `nowDate()`, `nowTime()`, `nowTimeHM()`, `nowHour()` |
+| **RUT** | `rutClean()`, `rutSplit()`, `rutComputeDV()`, `rutValidate()`, `rutFormat()` |
+
+## Date Format Reference
+
+Common format patterns for `nowTime(format)`:
+
+| Format | Output Example | Description |
+|--------|----------------|-------------|
+| `HH:mm:ss` | `14:30:45` | 24-hour time with seconds |
+| `HH:mm` | `14:30` | 24-hour time without seconds |
+| `hh:mm a` | `02:30 PM` | 12-hour time with AM/PM |
+| `HH` | `14` | Hour only (24-hour) |
+| `mm` | `30` | Minutes only |
+| `ss` | `45` | Seconds only |

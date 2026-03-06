@@ -1,0 +1,214 @@
+---
+title: Introduction to ServiceSQL
+description: Transform Google Sheets into a powerful relational database with an Eloquent-inspired ORM for Google Apps Script
+---
+
+# Introduction to ServiceSQL
+
+ServiceSQL is a complete ORM (Object-Relational Mapping) library for Google Apps Script, inspired by Laravel's Eloquent. It transforms your Google Sheets into a full-featured relational database with Models, Relationships, fluent QueryBuilder, powerful Collections, and much more.
+
+## What is ServiceSQL?
+
+ServiceSQL bridges the gap between Google Sheets and traditional database systems by providing:
+
+- **Eloquent-style Models** - Define your data structure with powerful model classes
+- **Fluent Query Builder** - Write expressive database queries using a chainable API
+- **Relationships** - Define and query complex data relationships (BelongsTo, HasMany, HasOne, ManyToMany)
+- **Collections** - Transform and manipulate query results with 50+ utility methods
+- **Eager Loading** - Efficiently load related data and avoid N+1 query problems
+
+<Note>
+  ServiceSQL works exclusively with Google Apps Script and Google Sheets. It's perfect for building lightweight applications, data management tools, and automation scripts without requiring external database infrastructure.
+</Note>
+
+## Why Use ServiceSQL?
+
+<CardGroup cols={2}>
+  <Card title="No Infrastructure Required" icon="server">
+    Use Google Sheets as your database - no need to manage servers, connections, or hosting costs.
+  </Card>
+  
+  <Card title="Familiar Syntax" icon="code">
+    If you've used Laravel or similar ORMs, you'll feel right at home with ServiceSQL's API.
+  </Card>
+  
+  <Card title="Powerful Relationships" icon="link">
+    Define complex relationships between your data and load them efficiently with eager loading.
+  </Card>
+  
+  <Card title="Rich Collections" icon="box">
+    Transform, filter, and manipulate your data with a comprehensive collection of utility methods.
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Eloquent Models
+
+Define your data models with static properties and lifecycle hooks:
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  static _primaryKey = "id";
+  static _timestamps = true;
+  static _fillable = ["name", "email", "age"];
+  static _casts = {
+    age: "int",
+    verified: "bool"
+  };
+  
+  posts() {
+    return this.hasMany(Post, "user_id");
+  }
+}
+```
+
+### Fluent QueryBuilder
+
+Build complex queries with an expressive, chainable API:
+
+```javascript
+const activeUsers = db.table("Users")
+  .where("status", "active")
+  .where("age", ">=", 18)
+  .whereNotNull("email")
+  .orderBy("created_at", "desc")
+  .limit(50)
+  .get();
+```
+
+### Rich Relationships
+
+Define and query relationships between your models:
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+  
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+  
+  comments() {
+    return this.hasMany(Comment, "post_id");
+  }
+}
+
+// Load posts with authors and comments in just 3 queries
+const posts = Post.with("author", "comments").get();
+```
+
+### Powerful Collections
+
+Manipulate query results with a rich set of collection methods:
+
+```javascript
+const users = User.all();
+
+// Chain collection methods
+const topUserEmails = users
+  .where("verified", true)
+  .sortByDesc("points")
+  .take(10)
+  .pluck("email")
+  .all();
+```
+
+## How It Works
+
+ServiceSQL uses Google Sheets as the storage layer:
+
+1. **Each Sheet = One Table** - Every sheet in your spreadsheet represents a database table
+2. **First Row = Headers** - Column names are defined in the first row of each sheet
+3. **Data Rows = Records** - Each subsequent row represents a single record
+4. **SheetDriver** - A driver layer translates ORM operations into sheet operations
+
+<Steps>
+  <Step title="Initialize the connection">
+    Connect ServiceSQL to your Google Spreadsheet using its ID:
+    
+    ```javascript
+    const db = APPSQL.init({
+      spreadsheetId: "YOUR_SPREADSHEET_ID"
+    });
+    ```
+  </Step>
+  
+  <Step title="Define your models">
+    Create model classes that extend the base Model class:
+    
+    ```javascript
+    class User extends Model {
+      static _table = "Users";
+      static _timestamps = true;
+    }
+    
+    User.use(db);
+    ```
+  </Step>
+  
+  <Step title="Query your data">
+    Use the fluent API to read and write data:
+    
+    ```javascript
+    const user = User.create({
+      name: "John Doe",
+      email: "john@example.com"
+    });
+    
+    const allUsers = User.where("status", "active").get();
+    ```
+  </Step>
+</Steps>
+
+## Use Cases
+
+ServiceSQL is ideal for:
+
+- **Internal Tools** - Build custom dashboards and admin panels
+- **Data Management** - Create CRUD interfaces for team data
+- **Automation** - Process and transform data with scheduled scripts
+- **Prototypes** - Quickly build MVPs without database setup
+- **CRM Systems** - Manage customer data and relationships
+- **Content Management** - Store and organize content with relationships
+
+## Architecture Overview
+
+ServiceSQL is built with a modular architecture:
+
+```
+APPSQL (Main Class)
+├── SheetDriver (Storage Layer)
+├── QueryBuilder (Query Construction)
+├── Model (Base Model Class)
+├── Collection (Result Transformation)
+├── EagerLoader (Relationship Loading)
+└── Relations
+    ├── BelongsTo
+    ├── HasOne
+    ├── HasMany
+    └── ManyToMany
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a working example running in 5 minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed setup instructions for your project
+  </Card>
+</CardGroup>
+
+<Warning>
+  **Performance Considerations**: While ServiceSQL is powerful, remember that Google Sheets has limitations. For applications with thousands of records or high-frequency updates, consider a traditional database. ServiceSQL excels with datasets under 10,000 rows.
+</Warning>
+
+## Community & Support
+
+ServiceSQL is inspired by Laravel's Eloquent ORM and brings modern database patterns to Google Apps Script. The library is designed to be intuitive for developers familiar with Eloquent while being accessible to those new to ORM concepts.
+
+Ready to get started? Head over to the [Quickstart guide](/quickstart) to build your first ServiceSQL application!

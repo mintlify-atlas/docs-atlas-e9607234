@@ -1,0 +1,589 @@
+---
+title: 'Best Practices'
+description: 'Performance tips, common patterns, and avoiding common pitfalls in ServiceSQL'
+---
+
+This guide covers best practices for using ServiceSQL efficiently, including performance optimization, common patterns, and how to avoid the N+1 query problem.
+
+## Performance Optimization
+
+### Use Eager Loading to Avoid N+1 Queries
+
+The N+1 query problem occurs when you load related data in a loop, causing one query for the main data and N additional queries for related data.
+
+<Card title="❌ Bad: N+1 Problem" icon="x" color="#ef4444">
+  ```javascript
+  // This executes 1 + N queries!
+  const posts = db.table("Posts").get();
+  
+  posts.each(post => {
+    // Separate query for EACH post
+    const author = db.table("Users")
+      .where("id", post.user_id)
+      .first();
+    Logger.log(`${post.title} by ${author.name}`);
+  });
+  ```
+</Card>
+
+<Card title="✅ Good: Eager Loading" icon="check" color="#22c55e">
+  ```javascript
+  // This executes only 2 queries!
+  const posts = Post.with("author").get();
+  
+  posts.each(post => {
+    // Author is already loaded
+    Logger.log(`${post.title} by ${post.author.name}`);
+  });
+  ```
+</Card>
+
+### Eager Loading Multiple Relations
+
+```javascript
+// Load multiple relationships efficiently
+const posts = Post.with("author", "comments", "tags").get();
+
+// Even nested relationships
+const posts = Post.with("author", "comments.author", "tags").get();
+
+posts.each(post => {
+  Logger.log(`Post: ${post.title}`);
+  Logger.log(`Author: ${post.author.name}`);
+  Logger.log(`Comments: ${post.comments.count()}`);
+  post.comments.each(comment => {
+    Logger.log(`  - ${comment.author.name}: ${comment.text}`);
+  });
+  Logger.log(`Tags: ${post.tags.pluck("name").all().join(", ")}`);
+});
+```
+
+<Tip>
+  Always use `with()` when accessing related data. It transforms N+1 queries into just 2-3 queries regardless of the number of records.
+</Tip>
+
+### Select Only Necessary Columns
+
+Don't fetch data you don't need:
+
+<Card title="❌ Bad: Fetching Everything" icon="x" color="#ef4444">
+  ```javascript
+  // Loads all columns
+  const users = db.table("Users").get();
+  const names = users.map(u => u.name);
+  ```
+</Card>
+
+<Card title="✅ Good: Select Specific Columns" icon="check" color="#22c55e">
+  ```javascript
+  // Only loads needed columns
+  const users = db.table("Users")
+    .select("id", "name")
+    .get();
+  const names = users.pluck("name").all();
+  ```
+</Card>
+
+### Use Pagination for Large Datasets
+
+<Card title="❌ Bad: Loading Everything" icon="x" color="#ef4444">
+  ```javascript
+  // Can timeout with large datasets
+  const allUsers = db.table("Users").get();
+  ```
+</Card>
+
+<Card title="✅ Good: Use Pagination" icon="check" color="#22c55e">
+  ```javascript
+  // Loads data in manageable chunks
+  const result = db.table("Users")
+    .orderBy("id")
+    .paginate(100, page);
+  ```
+</Card>
+
+### Prefer whereIn Over Multiple OR Conditions
+
+<Card title="❌ Bad: Multiple ORs" icon="x" color="#ef4444">
+  ```javascript
+  const users = db.table("Users")
+    .where("country", "ES")
+    .orWhere("country", "MX")
+    .orWhere("country", "AR")
+    .orWhere("country", "CO")
+    .get();
+  ```
+</Card>
+
+<Card title="✅ Good: Use whereIn" icon="check" color="#22c55e">
+  ```javascript
+  const users = db.table("Users")
+    .whereIn("country", ["ES", "MX", "AR", "CO"])
+    .get();
+  ```
+</Card>
+
+### Use Aggregations Instead of Loading and Counting
+
+<Card title="❌ Bad: Load Then Count" icon="x" color="#ef4444">
+  ```javascript
+  const users = db.table("Users")
+    .where("status", "active")
+    .get();
+  const count = users.count();
+  ```
+</Card>
+
+<Card title="✅ Good: Use count()" icon="check" color="#22c55e">
+  ```javascript
+  const count = db.table("Users")
+    .where("status", "active")
+    .count();
+  ```
+</Card>
+
+## Query Builder Best Practices
+
+### Chain Methods for Readability
+
+```javascript
+// ✅ Clean, readable query
+const activeUsers = db.table("Users")
+  .where("status", "active")
+  .where("age", ">=", 18)
+  .where("verified", true)
+  .orderBy("created_at", "desc")
+  .limit(50)
+  .get();
+```
+
+### Use Scopes for Reusable Logic
+
+<Card title="❌ Bad: Repeated Queries" icon="x" color="#ef4444">
+  ```javascript
+  // Repeated logic
+  const active1 = db.table("Users")
+    .where("status", "active")
+    .where("verified", true)
+    .get();
+
+  const active2 = db.table("Users")
+    .where("status", "active")
+    .where("verified", true)
+    .where("role", "admin")
+    .get();
+  ```
+</Card>
+
+<Card title="✅ Good: Use Scopes" icon="check" color="#22c55e">
+  ```javascript
+  class User extends Model {
+    static scopeActive(query) {
+      return query.where("status", "active");
+    }
+    
+    static scopeVerified(query) {
+      return query.where("verified", true);
+    }
+  }
+
+  // Reuse logic
+  const active1 = User.scope("active", "verified").get();
+  const active2 = User.scope("active", "verified")
+    .where("role", "admin")
+    .get();
+  ```
+</Card>
+
+### Don't Modify Queries After Execution
+
+<Card title="❌ Bad: Reusing Executed Query" icon="x" color="#ef4444">
+  ```javascript
+  const query = db.table("Users").where("status", "active");
+  const users = query.get(); // Executes query
+  
+  query.where("age", ">", 18); // ❌ Query already executed!
+  const adults = query.get();
+  ```
+</Card>
+
+<Card title="✅ Good: Create New Queries" icon="check" color="#22c55e">
+  ```javascript
+  const users = db.table("Users")
+    .where("status", "active")
+    .get();
+  
+  const adults = db.table("Users")
+    .where("status", "active")
+    .where("age", ">", 18)
+    .get();
+  ```
+</Card>
+
+## Data Integrity
+
+### Validate Before Inserting
+
+```javascript
+function createUser(userData) {
+  // Validate
+  if (!userData.email || !isValidEmail(userData.email)) {
+    throw new Error("Invalid email address");
+  }
+  
+  if (!userData.name || userData.name.trim() === "") {
+    throw new Error("Name is required");
+  }
+  
+  // Normalize
+  const normalized = {
+    name: userData.name.trim(),
+    email: userData.email.toLowerCase().trim(),
+    age: parseInt(userData.age) || null,
+    created_at: new Date().toISOString()
+  };
+  
+  // Insert
+  return db.table("Users").insert(normalized);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+```
+
+### Use Fillable to Protect Against Mass Assignment
+
+```javascript
+class User extends Model {
+  static _fillable = ["name", "email", "age"];
+  // "role" is NOT fillable - prevents users from making themselves admins
+}
+
+User.use(db);
+
+// Safe - only fillable fields are set
+const user = User.create({
+  name: "John",
+  email: "john@example.com",
+  role: "admin" // ❌ Ignored! Not in fillable
+});
+
+// To set protected fields, use direct assignment
+user.role = "admin";
+user.save();
+```
+
+### Normalize Data Before Storage
+
+```javascript
+class User extends Model {
+  // Mutator: automatically lowercase emails
+  setEmailAttribute(value) {
+    return value.toLowerCase().trim();
+  }
+  
+  // Mutator: ensure proper name capitalization
+  setNameAttribute(value) {
+    return value.trim().split(" ")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  }
+}
+
+const user = User.create({
+  name: "john DOE",
+  email: "  JOHN@EXAMPLE.COM  "
+});
+
+// Stored as:
+// name: "John Doe"
+// email: "john@example.com"
+```
+
+## Table Management
+
+### Define Complete Structure Early
+
+<Card title="✅ Good: Complete Structure" icon="check" color="#22c55e">
+  ```javascript
+  users.create([
+    "id", "name", "email", "age", "status",
+    "verified", "created_at", "updated_at"
+  ]);
+  ```
+</Card>
+
+<Card title="❌ Bad: Incremental Structure" icon="x" color="#ef4444">
+  ```javascript
+  users.create(["id", "name"]);
+  users.addColumn("email");     // Added later
+  users.addColumn("age");       // Added even later
+  users.addColumn("status");    // And later
+  ```
+</Card>
+
+### Use ensureHeaders in Initialization Scripts
+
+```javascript
+function initializeDatabase() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  // Safe - won't overwrite existing data
+  db.table("Users").ensureHeaders([
+    "id", "name", "email", "role", "created_at"
+  ]);
+  
+  db.table("Posts").ensureHeaders([
+    "id", "user_id", "title", "body", "published"
+  ]);
+}
+```
+
+### Preserve Data When Renaming
+
+<Card title="✅ Good: Rename Individual Columns" icon="check" color="#22c55e">
+  ```javascript
+  users.renameColumn("name", "full_name");
+  users.renameColumn("email", "email_address");
+  ```
+</Card>
+
+<Card title="❌ Bad: setHeaders with Overwrite" icon="x" color="#ef4444">
+  ```javascript
+  // ❌ Deletes all data!
+  users.setHeaders(["id", "full_name", "email_address"], true);
+  ```
+</Card>
+
+### Always Confirm Destructive Operations
+
+```javascript
+function deleteOldRecords() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert(
+    "Delete all inactive users?",
+    "This cannot be undone.",
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (response === ui.Button.YES) {
+    db.table("Users")
+      .where("status", "inactive")
+      .delete();
+    ui.alert("Users deleted");
+  }
+}
+```
+
+## Model Best Practices
+
+### Use Timestamps
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  static _timestamps = true; // Enables created_at and updated_at
+}
+
+const user = User.create({ name: "John" });
+// Automatically sets:
+// created_at: "2026-03-06T10:00:00.000Z"
+// updated_at: "2026-03-06T10:00:00.000Z"
+
+user.name = "Jane";
+user.save();
+// Automatically updates:
+// updated_at: "2026-03-06T10:05:00.000Z"
+```
+
+### Use Casts for Type Safety
+
+```javascript
+class Product extends Model {
+  static _casts = {
+    price: "float",
+    stock: "int",
+    active: "bool",
+    features: "json",
+    release_date: "date"
+  };
+}
+
+const product = Product.find(1);
+Logger.log(typeof product.price);        // "number"
+Logger.log(typeof product.active);       // "boolean"
+Logger.log(typeof product.features);     // "object"
+Logger.log(product.release_date instanceof Date); // true
+```
+
+### Use Soft Deletes for Recoverability
+
+```javascript
+class Post extends Model {
+  static _softDeletes = true;
+}
+
+const post = Post.find(1);
+post.delete(); // Sets deleted_at, doesn't actually delete
+
+// Query excludes soft-deleted records
+const posts = Post.all(); // Doesn't include deleted posts
+
+// Include deleted records
+const all = Post.withTrashed().get();
+
+// Only deleted records
+const deleted = Post.onlyTrashed().get();
+
+// Permanently delete
+post.forceDelete();
+```
+
+## Collections Best Practices
+
+### Use Collection Methods Instead of Native Array Operations
+
+<Card title="✅ Good: Use Collection Methods" icon="check" color="#22c55e">
+  ```javascript
+  const users = User.all();
+  
+  // Collection methods are chainable
+  const result = users
+    .where("status", "active")
+    .sortBy("name")
+    .take(10)
+    .pluck("email")
+    .all();
+  ```
+</Card>
+
+<Card title="❌ Bad: Convert to Array Too Early" icon="x" color="#ef4444">
+  ```javascript
+  const users = User.all().all(); // Converts to array
+  
+  // Now you lose collection methods
+  const filtered = users.filter(u => u.status === "active");
+  const sorted = filtered.sort((a, b) => a.name.localeCompare(b.name));
+  const limited = sorted.slice(0, 10);
+  const emails = limited.map(u => u.email);
+  ```
+</Card>
+
+### Leverage Collection Transformations
+
+```javascript
+const users = User.all();
+
+// Group by country
+const byCountry = users.groupBy("country");
+byCountry.each((group, country) => {
+  Logger.log(`${country}: ${group.count()} users`);
+});
+
+// Create lookup maps
+const usersById = users.keyBy("id");
+const user = usersById.get(123);
+
+// Aggregate data
+const stats = {
+  total: users.count(),
+  avgAge: users.avg("age"),
+  totalPoints: users.sum("points")
+};
+```
+
+## Avoid Common Pitfalls
+
+### Don't Store Complex Objects Directly
+
+<Card title="❌ Bad: Store Objects" icon="x" color="#ef4444">
+  ```javascript
+  db.table("Users").insert({
+    id: 1,
+    settings: { theme: "dark", lang: "en" } // ❌ Won't work!
+  });
+  ```
+</Card>
+
+<Card title="✅ Good: Use JSON Casts" icon="check" color="#22c55e">
+  ```javascript
+  class User extends Model {
+    static _casts = {
+      settings: "json"
+    };
+  }
+
+  User.create({
+    id: 1,
+    settings: { theme: "dark", lang: "en" } // ✅ Automatically serialized
+  });
+  ```
+</Card>
+
+### Don't Forget to Call save() After Modifications
+
+```javascript
+const user = User.find(1);
+
+// ❌ Changes not persisted
+user.name = "New Name";
+// Missing user.save()!
+
+// ✅ Changes persisted
+user.name = "New Name";
+user.save();
+```
+
+### Handle Missing Records Gracefully
+
+```javascript
+// ❌ Can throw errors
+const user = User.find(999); // Returns null if not found
+Logger.log(user.name); // ❌ Error: Cannot read property 'name' of null
+
+// ✅ Safe handling
+const user = User.find(999);
+if (user) {
+  Logger.log(user.name);
+} else {
+  Logger.log("User not found");
+}
+```
+
+## Summary
+
+Key takeaways for ServiceSQL best practices:
+
+### Performance
+- ✅ Use eager loading with `with()` to avoid N+1 queries
+- ✅ Select only needed columns with `select()`
+- ✅ Paginate large datasets with `paginate()`
+- ✅ Use aggregations instead of loading all data
+- ✅ Prefer `whereIn()` over multiple ORs
+
+### Data Integrity
+- ✅ Validate and normalize data before insertion
+- ✅ Use `fillable` to protect against mass assignment
+- ✅ Use mutators for consistent data formatting
+- ✅ Enable timestamps for audit trails
+- ✅ Use soft deletes for recoverability
+
+### Query Building
+- ✅ Chain methods for readability
+- ✅ Define reusable scopes
+- ✅ Don't reuse executed queries
+- ✅ Always order paginated results
+
+### Table Management
+- ✅ Define complete structure early
+- ✅ Use `ensureHeaders()` in init scripts
+- ✅ Rename columns individually to preserve data
+- ✅ Confirm destructive operations
+
+Following these practices will help you build efficient, maintainable applications with ServiceSQL.
+
+For more information, see:
+- [Models](/core/models) - Working with Models
+- [QueryBuilder](/api/query-builder) - Building queries
+- [Relations](/core/relationships) - Eager loading relationships

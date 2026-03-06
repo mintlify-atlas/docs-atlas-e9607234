@@ -1,80 +1,375 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart Guide
+description: Build your first ServiceSQL application in 5 minutes
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+This guide will help you build a working example with ServiceSQL in just 5 minutes. By the end, you'll have a simple blog system with users and posts.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- A Google Apps Script project
+- A Google Spreadsheet to use as your database
+- ServiceSQL library added to your project (see [Installation](/installation))
 
-### Step 2: Deploy your changes
+## Step 1: Get Your Spreadsheet ID
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+First, create or open a Google Spreadsheet and copy its ID from the URL:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+```
+https://docs.google.com/spreadsheets/d/1abc...xyz/edit
+                                         ↑
+                                Copy this part
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  The Spreadsheet ID is the long string between `/d/` and `/edit` in your spreadsheet's URL.
 </Note>
+
+## Step 2: Initialize ServiceSQL
+
+In your Google Apps Script project, create a new file called `Code.gs` and add:
+
+```javascript Code.gs
+function setupDatabase() {
+  // Initialize ServiceSQL with your spreadsheet ID
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID" // Replace with your actual ID
+  });
+  
+  Logger.log("Database initialized!");
+  return db;
+}
+```
+
+<Warning>
+  Replace `"YOUR_SPREADSHEET_ID"` with the actual ID you copied in Step 1.
+</Warning>
+
+## Step 3: Create Your First Table
+
+Now let's create a Users table:
+
+<Steps>
+  <Step title="Define table structure">
+    Add this code to create a Users table with columns:
+    
+    ```javascript Code.gs
+    function createUsersTable() {
+      const db = APPSQL.init({
+        spreadsheetId: "YOUR_SPREADSHEET_ID"
+      });
+      
+      // Create Users table
+      const users = db.table("Users");
+      users.create(["id", "name", "email", "age", "created_at"]);
+      
+      Logger.log("Users table created!");
+    }
+    ```
+  </Step>
+  
+  <Step title="Run the function">
+    1. Select `createUsersTable` from the function dropdown
+    2. Click the Run button
+    3. Authorize the script if prompted
+    4. Check your spreadsheet - you'll see a new "Users" sheet!
+  </Step>
+</Steps>
+
+## Step 4: Insert Data
+
+Let's add some users to our database:
+
+```javascript Code.gs
+function addUsers() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  const users = db.table("Users");
+  
+  // Insert first user
+  users.insert({
+    id: 1,
+    name: "John Doe",
+    email: "john@example.com",
+    age: 30,
+    created_at: new Date().toISOString()
+  });
+  
+  // Insert second user
+  users.insert({
+    id: 2,
+    name: "Jane Smith",
+    email: "jane@example.com",
+    age: 25,
+    created_at: new Date().toISOString()
+  });
+  
+  Logger.log("Users added!");
+}
+```
+
+Run this function and check your spreadsheet - you'll see the data appear!
+
+## Step 5: Query Your Data
+
+Now let's retrieve and filter our data:
+
+```javascript Code.gs
+function queryUsers() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  const users = db.table("Users");
+  
+  // Get all users
+  const allUsers = users.get();
+  Logger.log("All users:", allUsers);
+  
+  // Find user by ID
+  const user = users.findById(1);
+  Logger.log("User 1:", user.name);
+  
+  // Filter users
+  const youngUsers = db.table("Users")
+    .where("age", "<", 30)
+    .get();
+  Logger.log("Users under 30:", youngUsers);
+  
+  // Count users
+  const count = users.count();
+  Logger.log("Total users:", count);
+}
+```
+
+## Step 6: Use Models (Optional but Recommended)
+
+For more complex applications, use Models instead of direct table queries:
+
+```javascript Code.gs
+class User extends Model {
+  static _table = "Users";
+  static _primaryKey = "id";
+  static _timestamps = true;
+  static _fillable = ["name", "email", "age"];
+  static _casts = {
+    age: "int"
+  };
+}
+
+function useModels() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  // Initialize the model
+  User.use(db);
+  
+  // Create a user
+  const user = User.create({
+    name: "Bob Johnson",
+    email: "bob@example.com",
+    age: 35
+  });
+  
+  Logger.log("Created user:", user.name);
+  
+  // Find and update
+  const foundUser = User.find(1);
+  foundUser.age = 31;
+  foundUser.save();
+  
+  Logger.log("Updated user:", foundUser.name);
+  
+  // Query with conditions
+  const activeUsers = User
+    .where("age", ">=", 25)
+    .get();
+  
+  Logger.log("Users 25+:", activeUsers.count());
+}
+```
+
+## Complete Example: Blog System
+
+Here's a complete example with Users and Posts:
+
+<CodeGroup>
+```javascript Setup Tables
+function setupBlog() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  // Create Users table
+  db.table("Users").create(["id", "name", "email", "created_at"]);
+  
+  // Create Posts table
+  db.table("Posts").create([
+    "id", "user_id", "title", "body", "published", "created_at"
+  ]);
+  
+  Logger.log("Blog tables created!");
+}
+```
+
+```javascript Define Models
+class User extends Model {
+  static _table = "Users";
+  static _timestamps = true;
+  
+  posts() {
+    return this.hasMany(Post, "user_id");
+  }
+}
+
+class Post extends Model {
+  static _table = "Posts";
+  static _timestamps = true;
+  static _casts = { published: "bool" };
+  
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+```
+
+```javascript Add Data
+function populateBlog() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  User.use(db);
+  Post.use(db);
+  
+  // Create a user
+  const user = User.create({
+    name: "John Doe",
+    email: "john@example.com"
+  });
+  
+  // Create posts
+  Post.create({
+    user_id: user.id,
+    title: "My First Post",
+    body: "This is my first blog post!",
+    published: true
+  });
+  
+  Post.create({
+    user_id: user.id,
+    title: "Another Post",
+    body: "More great content here.",
+    published: true
+  });
+  
+  Logger.log("Blog populated!");
+}
+```
+
+```javascript Query with Relations
+function getBlogPosts() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  User.use(db);
+  Post.use(db);
+  
+  // Get all posts with their authors
+  const posts = Post.with("author").get();
+  
+  posts.each(post => {
+    Logger.log(`"${post.title}" by ${post.author.name}`);
+  });
+  
+  // Get a user with all their posts
+  const user = User.with("posts").find(1);
+  Logger.log(`${user.name} has ${user.posts.count()} posts`);
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+Congratulations! You've built your first ServiceSQL application. Here's what to explore next:
+
+<CardGroup cols={2}>
+  <Card title="Models" icon="cube" href="/core/models">
+    Learn about model features like casts, accessors, and lifecycle hooks
+  </Card>
+  
+  <Card title="Query Builder" icon="filter" href="/core/query-builder">
+    Master complex queries, joins, and aggregations
+  </Card>
+  
+  <Card title="Relationships" icon="link" href="/core/relationships">
+    Define HasMany, BelongsTo, and ManyToMany relationships
+  </Card>
+  
+  <Card title="Collections" icon="box" href="/core/collections">
+    Transform and manipulate query results
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+### Update Records
+
+```javascript
+// With models
+const user = User.find(1);
+user.email = "newemail@example.com";
+user.save();
+
+// With table API
+db.table("Users").updateById(1, {
+  email: "newemail@example.com"
+});
+```
+
+### Delete Records
+
+```javascript
+// With models
+const user = User.find(1);
+user.delete();
+
+// With table API
+db.table("Users").deleteById(1);
+```
+
+### Pagination
+
+```javascript
+const result = User.query().paginate(20, 1); // 20 per page, page 1
+
+Logger.log(result.data);         // Array of users
+Logger.log(result.total);        // Total count
+Logger.log(result.current_page); // Current page
+Logger.log(result.last_page);    // Last page number
+```
+
+<Note>
+  **Pro Tip**: Use Models for applications with complex business logic, and use the table API for simple CRUD operations or data migrations.
+</Note>
+
+## Troubleshooting
+
+### Table not found
+Make sure you've called `create()` on the table first, or check that the sheet name matches exactly.
+
+### Data not appearing
+Verify your spreadsheet ID is correct and the script has permission to access the spreadsheet.
+
+### Authorization errors
+Run any function manually first to trigger the authorization flow. Accept all permissions.
+
+## Ready to Learn More?
+
+You now have a working ServiceSQL application! Continue to the [Installation guide](/installation) for production setup details, or dive into [Models](/core/models) to learn about advanced features.

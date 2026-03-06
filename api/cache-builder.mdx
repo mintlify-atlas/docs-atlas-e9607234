@@ -1,0 +1,433 @@
+---
+title: CacheBuilder
+description: Fluent interface for working with Apps Script CacheService
+---
+
+The `CacheBuilder` class provides a fluent, chainable API for working with Google Apps Script's `CacheService`. It supports script, user, and document caches with simple get/put/remove operations.
+
+## Constructor
+
+```javascript
+const cache = new CacheBuilder(appsql)
+```
+
+<ParamField path="appsql" type="APPSQL">
+  Optional APPSQL instance for context
+</ParamField>
+
+## Cache Type Selection
+
+Choose which type of cache to use. Default is `script()`.
+
+### script()
+
+Use script-level cache (shared across all users).
+
+```javascript
+cache.script()
+```
+
+### user()
+
+Use user-specific cache (isolated per user).
+
+```javascript
+cache.user()
+```
+
+### document()
+
+Use document-specific cache (shared by all users of a document).
+
+```javascript
+cache.document()
+```
+
+## Cache Operations
+
+### Setting Values
+
+#### key()
+
+Specify a single cache key.
+
+```javascript
+cache.key(k)
+```
+
+<ParamField path="k" type="string" required>
+  The cache key
+</ParamField>
+
+#### value()
+
+Specify the value to store.
+
+```javascript
+cache.value(v)
+```
+
+<ParamField path="v" type="any" required>
+  Value to cache (will be converted to string)
+</ParamField>
+
+#### ttl()
+
+Set time-to-live in seconds.
+
+```javascript
+cache.ttl(seconds)
+```
+
+<ParamField path="seconds" type="number" required>
+  Number of seconds before the cache expires
+</ParamField>
+
+#### put()
+
+Store the value in cache.
+
+```javascript
+cache.put()
+```
+
+**Example:**
+
+```javascript
+const cache = new CacheBuilder();
+
+// Cache a value for 5 minutes (300 seconds)
+cache
+  .script()
+  .key("last_sync")
+  .value(new Date().toISOString())
+  .ttl(300)
+  .put();
+```
+
+### Batch Operations
+
+#### map()
+
+Specify multiple key-value pairs to store at once.
+
+```javascript
+cache.map(m)
+```
+
+<ParamField path="m" type="object" required>
+  Object with key-value pairs to cache
+</ParamField>
+
+**Example:**
+
+```javascript
+const cache = new CacheBuilder();
+
+// Store multiple values
+cache
+  .script()
+  .map({
+    "user:1": JSON.stringify({ id: 1, name: "John" }),
+    "user:2": JSON.stringify({ id: 2, name: "Jane" }),
+  })
+  .ttl(600)
+  .put();
+```
+
+#### keys()
+
+Specify multiple keys to retrieve.
+
+```javascript
+cache.keys(arr)
+```
+
+<ParamField path="arr" type="array" required>
+  Array of cache keys to retrieve
+</ParamField>
+
+**Example:**
+
+```javascript
+const users = cache
+  .script()
+  .keys(["user:1", "user:2"])
+  .get();
+
+// Returns: { "user:1": "...", "user:2": "..." }
+```
+
+### Retrieving Values
+
+#### get()
+
+Retrieve value(s) from cache.
+
+```javascript
+cache.get()
+```
+
+<Note>
+  Returns a single value if using `key()`, or an object of key-value pairs if using `keys()`.
+</Note>
+
+**Example:**
+
+```javascript
+// Get single value
+const lastSync = cache
+  .script()
+  .key("last_sync")
+  .get();
+
+// Get multiple values
+const users = cache
+  .script()
+  .keys(["user:1", "user:2"])
+  .get();
+```
+
+### Removing Values
+
+#### remove()
+
+Remove key(s) from cache.
+
+```javascript
+cache.remove()
+```
+
+**Example:**
+
+```javascript
+// Remove single key
+cache
+  .script()
+  .key("last_sync")
+  .remove();
+
+// Remove multiple keys
+cache
+  .script()
+  .keys(["user:1", "user:2"])
+  .remove();
+```
+
+#### clearAll()
+
+Remove multiple keys at once.
+
+```javascript
+cache.clearAll(keys)
+```
+
+<ParamField path="keys" type="array" required>
+  Array of cache keys to remove
+</ParamField>
+
+**Example:**
+
+```javascript
+const cache = new CacheBuilder();
+cache.script().clearAll(["key1", "key2", "key3"]);
+```
+
+## Integration with Models
+
+Cache frequently accessed queries for better performance:
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+
+  static cachedLatest(limit = 10) {
+    const cache = new CacheBuilder();
+    const key = `posts:latest:${limit}`;
+
+    // Try to get from cache
+    const cached = cache.script().key(key).get();
+    if (cached) {
+      return new Collection(
+        JSON.parse(cached).map(p => new Post(p))
+      );
+    }
+
+    // Fetch from database
+    const posts = this.query()
+      .orderBy("created_at", "desc")
+      .limit(limit)
+      .get();
+
+    // Store in cache for 60 seconds
+    cache
+      .script()
+      .key(key)
+      .value(JSON.stringify(posts.toArray()))
+      .ttl(60)
+      .put();
+
+    return posts;
+  }
+}
+
+Post.use(db);
+
+// Usage
+const latestPosts = Post.cachedLatest(10);
+```
+
+## Complete Examples
+
+### User Session Cache
+
+```javascript
+function cacheUserSession(userId, sessionData) {
+  const cache = new CacheBuilder();
+  
+  cache
+    .user() // User-specific cache
+    .key(`session:${userId}`)
+    .value(JSON.stringify(sessionData))
+    .ttl(1800) // 30 minutes
+    .put();
+}
+
+function getUserSession(userId) {
+  const cache = new CacheBuilder();
+  
+  const cached = cache
+    .user()
+    .key(`session:${userId}`)
+    .get();
+  
+  return cached ? JSON.parse(cached) : null;
+}
+```
+
+### Configuration Cache
+
+```javascript
+function cacheAppConfig() {
+  const cache = new CacheBuilder();
+  
+  // Check if config is cached
+  const cached = cache.script().key("app:config").get();
+  if (cached) {
+    return JSON.parse(cached);
+  }
+  
+  // Load config from sheet
+  const config = loadConfigFromSheet();
+  
+  // Cache for 1 hour
+  cache
+    .script()
+    .key("app:config")
+    .value(JSON.stringify(config))
+    .ttl(3600)
+    .put();
+  
+  return config;
+}
+```
+
+### Temporary Feature Flags
+
+```javascript
+function setFeatureFlag(flagName, enabled, durationSeconds = 3600) {
+  const cache = new CacheBuilder();
+  
+  cache
+    .script()
+    .key(`feature:${flagName}`)
+    .value(enabled ? "1" : "0")
+    .ttl(durationSeconds)
+    .put();
+}
+
+function isFeatureEnabled(flagName) {
+  const cache = new CacheBuilder();
+  const value = cache.script().key(`feature:${flagName}`).get();
+  return value === "1";
+}
+```
+
+## Best Practices
+
+<Note>
+  **DO**: Serialize complex objects to JSON strings
+  
+  ```javascript
+  cache
+    .key("user:1")
+    .value(JSON.stringify(user.toJSON()))
+    .put();
+  ```
+</Note>
+
+<Note>
+  **DO**: Use consistent key naming conventions
+  
+  ```javascript
+  // Good: resource:id format
+  const key = `user:${userId}`;
+  const key = `post:${postId}:comments`;
+  ```
+</Note>
+
+<Note>
+  **DO**: Set reasonable TTL values
+  
+  ```javascript
+  // Short-lived data
+  cache.ttl(60);     // 1 minute
+  
+  // Medium-lived data
+  cache.ttl(300);    // 5 minutes
+  
+  // Long-lived data
+  cache.ttl(3600);   // 1 hour
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Call operations without required parameters
+  
+  ```javascript
+  // ❌ Throws error: key required for get()
+  cache.script().get();
+  
+  // ✅ Correct
+  cache.script().key("myKey").get();
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Store objects without serialization
+  
+  ```javascript
+  // ❌ Objects are converted to string with toString()
+  cache.key("u").value({ id: 1 });
+  
+  // ✅ Serialize first
+  cache.key("u").value(JSON.stringify({ id: 1 }));
+  ```
+</Note>
+
+## Cache Types Comparison
+
+| Type | Scope | Use Case |
+|------|-------|----------|
+| **Script** | Shared across all users | App configuration, shared data |
+| **User** | Per-user isolation | User sessions, preferences |
+| **Document** | Per-document | Document-specific settings |
+
+## Method Summary
+
+| Category | Methods |
+|----------|--------|
+| **Type** | `script()`, `user()`, `document()` |
+| **Keys** | `key()`, `keys()`, `map()` |
+| **Values** | `value()`, `ttl()` |
+| **Operations** | `get()`, `put()`, `remove()`, `clearAll()` |

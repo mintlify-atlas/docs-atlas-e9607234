@@ -1,0 +1,507 @@
+---
+title: 'Soft Deletes'
+description: 'Mark records as deleted without permanently removing them from the database'
+---
+
+**Soft deletes** mark records as deleted without actually removing them from your database. This is useful for maintaining data integrity, audit trails, and allowing record restoration.
+
+## Enabling Soft Deletes
+
+Set `_softDeletes` to `true` in your model:
+
+```javascript
+class Post extends Model {}
+
+Post._table = "Posts";
+Post._softDeletes = true;
+Post._deletedAt = "deleted_at";  // Column name (default)
+Post._timestamps = true;         // Recommended with soft deletes
+
+Post.use(db);
+```
+
+<Note>
+  Your sheet must have a `deleted_at` column (or whatever you set in `_deletedAt`). ServiceSQL uses `null` for active records and an ISO 8601 timestamp for deleted records.
+</Note>
+
+## How It Works
+
+### Deleting Records
+
+When you call `delete()`, the record is marked as deleted:
+
+```javascript
+const post = Post.find(1);
+post.delete();
+
+// In the database:
+// deleted_at: "2025-01-15T10:30:00.000Z" (was null)
+
+// Record still exists in the sheet, just marked as deleted
+```
+
+### Querying Records
+
+By default, soft-deleted records are excluded from queries:
+
+```javascript
+// Only returns active (non-deleted) posts
+const posts = Post.all();
+const activePost = Post.find(1); // Returns null if deleted
+const results = Post.where("published", true).get(); // Excludes deleted
+```
+
+## Implementation Details
+
+From `Model.js:133-166`, soft deletes are applied automatically in the query builder:
+
+```javascript
+static query() {
+  // Auto-boot if needed
+  if (!Object.prototype.hasOwnProperty.call(this, "_booted") || !this._booted) {
+    if (typeof this.boot === "function") {
+      this.boot();
+    }
+    this._booted = true;
+  }
+
+  if (!this._db) {
+    throw new Error(`Database no inicializada en ${this.name}. Ejecuta Model.use(db)`);
+  }
+
+  let qb = this._db.table(this._table);
+  qb._model = this;
+
+  // Apply soft delete filter
+  if (this._softDeletes) {
+    if (this._trashMode === null) {
+      // Default: exclude deleted
+      qb = qb.where("deleted_at", null);
+    } else if (this._trashMode === "only") {
+      // Only show deleted
+      qb = qb.where("deleted_at", "!=", null);
+    }
+    // 'with' mode: no filter applied
+  }
+
+  this._trashMode = null;
+  return qb;
+}
+```
+
+From `Model.js:327-341`, the delete operation marks the record:
+
+```javascript
+delete() {
+  const ModelClass = this.constructor;
+  const pk = ModelClass._primaryKey || "id";
+  if (!this[pk]) throw new Error("delete requires primary key");
+  
+  ModelClass._fireEvent("deleting", this);
+  
+  if (ModelClass._softDeletes) {
+    // Soft delete: update deleted_at
+    const payload = {};
+    payload[ModelClass._deletedAt] = new Date().toISOString();
+    ModelClass.query().updateById(this[pk], payload);
+  } else {
+    // Hard delete: actually remove
+    ModelClass.query().deleteById(this[pk]);
+  }
+  
+  ModelClass._fireEvent("deleted", this);
+  return true;
+}
+```
+
+## Including Deleted Records
+
+### With Trashed
+
+Include both active and deleted records:
+
+```javascript
+// Get all posts, including deleted ones
+const allPosts = Post.withTrashed().get();
+
+allPosts.each(post => {
+  if (post.deleted_at) {
+    Logger.log(`Deleted: ${post.title}`);
+  } else {
+    Logger.log(`Active: ${post.title}`);
+  }
+});
+```
+
+### Only Trashed
+
+Get only deleted records:
+
+```javascript
+// Get only deleted posts
+const deletedPosts = Post.onlyTrashed().get();
+
+deletedPosts.each(post => {
+  Logger.log(`Deleted on ${post.deleted_at}: ${post.title}`);
+});
+```
+
+## Restoring Records
+
+To restore a soft-deleted record, set `deleted_at` back to `null`:
+
+```javascript
+// Find deleted post
+const post = Post.onlyTrashed().where("id", 1).first();
+
+if (post) {
+  post.deleted_at = null;
+  post.save();
+  Logger.log("Post restored!");
+}
+```
+
+### Create a Restore Helper
+
+```javascript
+class Post extends Model {
+  restore() {
+    this.deleted_at = null;
+    return this.save();
+  }
+
+  static restoreById(id) {
+    const record = this.onlyTrashed().where(this._primaryKey, id).first();
+    if (record) {
+      return record.restore();
+    }
+    return false;
+  }
+}
+
+Post._table = "Posts";
+Post._softDeletes = true;
+
+Post.use(db);
+
+// Usage
+const post = Post.onlyTrashed().first();
+post.restore();
+
+// Or
+Post.restoreById(1);
+```
+
+## Practical Examples
+
+### User Account Deletion
+
+```javascript
+class User extends Model {
+  // Soft delete user and all their content
+  deactivate() {
+    // Delete user posts
+    Post.where("user_id", this.id).query().delete();
+    
+    // Delete user comments
+    Comment.where("user_id", this.id).query().delete();
+    
+    // Delete user account
+    this.delete();
+    
+    Logger.log(`User ${this.email} deactivated`);
+  }
+
+  // Restore user and their content
+  reactivate() {
+    // Restore user
+    this.restore();
+    
+    // Restore user posts
+    Post.onlyTrashed()
+        .where("user_id", this.id)
+        .get()
+        .each(post => post.restore());
+    
+    // Restore user comments
+    Comment.onlyTrashed()
+           .where("user_id", this.id)
+           .get()
+           .each(comment => comment.restore());
+    
+    Logger.log(`User ${this.email} reactivated`);
+  }
+}
+
+User._table = "Users";
+User._softDeletes = true;
+User._timestamps = true;
+
+User.use(db);
+
+const user = User.find(1);
+user.deactivate();
+
+// Later...
+const deletedUser = User.onlyTrashed().where("id", 1).first();
+deletedUser.reactivate();
+```
+
+### Trash Management
+
+```javascript
+class TrashManager {
+  // Get all deleted records from a model
+  static getTrash(ModelClass) {
+    return ModelClass.onlyTrashed().get();
+  }
+
+  // Empty trash (permanently delete old records)
+  static emptyTrash(ModelClass, daysOld = 30) {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    
+    const oldDeleted = ModelClass.onlyTrashed()
+      .where("deleted_at", "<=", cutoffDate.toISOString())
+      .get();
+    
+    Logger.log(`Found ${oldDeleted.count()} records to permanently delete`);
+    
+    // Note: This would require a force delete method
+    // For now, you could manually delete these from the sheet
+  }
+
+  // Restore all deleted records
+  static restoreAll(ModelClass) {
+    const deleted = ModelClass.onlyTrashed().get();
+    deleted.each(record => {
+      record.deleted_at = null;
+      record.save();
+    });
+    Logger.log(`Restored ${deleted.count()} records`);
+  }
+}
+
+// Usage
+const trash = TrashManager.getTrash(Post);
+Logger.log(`Posts in trash: ${trash.count()}`);
+
+TrashManager.emptyTrash(Post, 30); // Delete posts in trash > 30 days
+TrashManager.restoreAll(Post);      // Restore all deleted posts
+```
+
+## Scopes for Soft Deletes
+
+```javascript
+class Post extends Model {
+  static scopeDeletedThisWeek(query) {
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    return query.where("deleted_at", ">=", weekAgo.toISOString());
+  }
+
+  static scopeDeletedByUser(query, userId) {
+    return query.where("deleted_by", userId);
+  }
+}
+
+Post._table = "Posts";
+Post._softDeletes = true;
+
+Post.use(db);
+
+// Get recently deleted posts
+const recentlyDeleted = Post.onlyTrashed()
+                            .scope("deletedThisWeek")
+                            .get();
+```
+
+## Tracking Who Deleted
+
+Extend soft deletes to track who performed the deletion:
+
+```javascript
+class Post extends Model {
+  deleteBy(userId) {
+    this.deleted_by = userId;
+    return this.delete();
+  }
+}
+
+Post._table = "Posts";
+Post._softDeletes = true;
+Post._fillable = ["title", "body", "user_id", "published", "deleted_by"];
+
+Post.use(db);
+
+// Delete with user tracking
+const post = Post.find(1);
+post.deleteBy(currentUserId);
+
+// Query deleted posts by user
+const deletedByUser = Post.onlyTrashed()
+                          .where("deleted_by", currentUserId)
+                          .get();
+```
+
+## Configuration Options
+
+From `Model.js:456-457`, default soft delete configuration:
+
+```javascript
+Model._softDeletes = false;
+Model._deletedAt = "deleted_at";
+```
+
+You can customize the column name:
+
+```javascript
+class User extends Model {}
+
+User._table = "Users";
+User._softDeletes = true;
+User._deletedAt = "removed_at";  // Use custom column name
+
+User.use(db);
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Enable soft deletes for important data">
+  Always use soft deletes for user-facing data:
+  
+  ```javascript
+  User._softDeletes = true;
+  Post._softDeletes = true;
+  Order._softDeletes = true;
+  ```
+</Step>
+
+<Step title="Combine with timestamps">
+  Track when records were created, updated, and deleted:
+  
+  ```javascript
+  Post._timestamps = true;
+  Post._softDeletes = true;
+  ```
+</Step>
+
+<Step title="Create restore methods">
+  Make it easy to restore deleted records:
+  
+  ```javascript
+  restore() {
+    this.deleted_at = null;
+    return this.save();
+  }
+  ```
+</Step>
+
+<Step title="Implement trash cleanup">
+  Periodically hard-delete old soft-deleted records:
+  
+  ```javascript
+  static cleanupTrash(daysOld = 90) {
+    // Find and permanently delete records deleted > 90 days ago
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Hard Deletes
+
+If you need to permanently delete a record with soft deletes enabled, you'll need to access the database directly:
+
+```javascript
+// This still soft deletes
+const post = Post.find(1);
+post.delete();
+
+// For hard delete, you'd need to implement a custom method
+class Post extends Model {
+  static forceDelete(id) {
+    // Bypass soft delete filter
+    return this._db.table(this._table)
+                   .where(this._primaryKey, id)
+                   .delete();
+  }
+}
+```
+
+## Common Use Cases
+
+<Accordion title="Audit Trail">
+
+```javascript
+class AuditLog extends Model {
+  static logDeletion(model, userId) {
+    return this.create({
+      action: "delete",
+      model_type: model.constructor.name,
+      model_id: model.id,
+      user_id: userId,
+      data: JSON.stringify(model)
+    });
+  }
+}
+
+class Post extends Model {}
+Post._softDeletes = true;
+Post.observe({
+  deleted(post) {
+    AuditLog.logDeletion(post, getCurrentUserId());
+  }
+});
+```
+
+</Accordion>
+
+<Accordion title="Undo Functionality">
+
+```javascript
+class Post extends Model {
+  static getRecentlyDeleted(minutes = 30) {
+    const cutoff = new Date(Date.now() - minutes * 60 * 1000);
+    return this.onlyTrashed()
+               .where("deleted_at", ">=", cutoff.toISOString())
+               .get();
+  }
+}
+
+// Show undo option for recently deleted posts
+const recentlyDeleted = Post.getRecentlyDeleted(30);
+if (recentlyDeleted.count() > 0) {
+  Logger.log("You can undo these deletions:");
+  recentlyDeleted.each(post => {
+    Logger.log(`- ${post.title} (deleted ${post.deleted_at})`);
+  });
+}
+```
+
+</Accordion>
+
+## Summary
+
+| Method | Description | Example |
+|--------|-------------|----------|
+| `delete()` | Soft delete (sets deleted_at) | `post.delete()` |
+| `all()` | Get active records only | `Post.all()` |
+| `withTrashed()` | Include deleted records | `Post.withTrashed().get()` |
+| `onlyTrashed()` | Get deleted records only | `Post.onlyTrashed().get()` |
+| `restore()` | Restore deleted record | `post.deleted_at = null; post.save()` |
+
+<Warning>
+  **Important considerations:**
+  
+  - Soft deletes increase database size over time - implement cleanup strategies
+  - Unique constraints may conflict with soft-deleted records
+  - Related records need careful handling when parent is soft-deleted
+  - Consider privacy regulations (GDPR) which may require actual deletion
+</Warning>
+
+<Tip>
+  Soft deletes are perfect for user-facing features where "undo" functionality is important. They also provide an excellent audit trail and help prevent accidental data loss.
+</Tip>

@@ -1,0 +1,889 @@
+---
+title: "QueryBuilder"
+description: "Fluent query builder for constructing and executing database queries"
+---
+
+## Overview
+
+The `QueryBuilder` class provides a fluent interface for building and executing queries against your spreadsheet data. It supports filtering, sorting, joining, grouping, and aggregation operations.
+
+## Creating a Query Builder
+
+```javascript
+// Via table() method
+const query = db.table('Users');
+
+// Via Model
+const query = User.query();
+```
+
+## Select Methods
+
+<Accordion title="select()">
+Specify which columns to retrieve.
+
+```javascript
+const users = db.table('Users')
+  .select('id', 'name', 'email')
+  .get();
+
+const names = db.table('Users')
+  .select('name')
+  .get();
+```
+
+<ParamField path="...cols" type="string">
+  Column names to select. If empty, selects all columns
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="distinct()">
+Retrieve only unique/distinct results.
+
+```javascript
+const uniqueStatuses = db.table('Users')
+  .select('status')
+  .distinct()
+  .get();
+```
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+## Where Clauses
+
+<Accordion title="where()">
+Add a basic where clause to filter results.
+
+```javascript
+// Simple equality
+const activeUsers = db.table('Users')
+  .where('status', 'active')
+  .get();
+
+// With operator
+const highValueOrders = db.table('Orders')
+  .where('total', '>', 100)
+  .get();
+
+// Multiple conditions (AND)
+const users = db.table('Users')
+  .where('status', 'active')
+  .where('role', 'admin')
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator: `==`, `===`, `!=`, `<`, `>`, `<=`, `>=` (defaults to `==` if value is provided as second argument)
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to compare against
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="orWhere()">
+Add an OR where clause.
+
+```javascript
+const users = db.table('Users')
+  .where('role', 'admin')
+  .orWhere('role', 'moderator')
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator (defaults to `==`)
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to compare against
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereIn()">
+Filter where column value is in an array.
+
+```javascript
+const users = db.table('Users')
+  .whereIn('status', ['active', 'pending', 'verified'])
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter
+</ParamField>
+
+<ParamField path="values" type="array" required>
+  Array of values to match
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereNotIn()">
+Filter where column value is not in an array.
+
+```javascript
+const users = db.table('Users')
+  .whereNotIn('role', ['banned', 'suspended'])
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter
+</ParamField>
+
+<ParamField path="values" type="array" required>
+  Array of values to exclude
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereNull()">
+Filter where column value is null or empty.
+
+```javascript
+const usersWithoutEmail = db.table('Users')
+  .whereNull('email')
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to check
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereNotNull()">
+Filter where column value is not null or empty.
+
+```javascript
+const verifiedUsers = db.table('Users')
+  .whereNotNull('verified_at')
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to check
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="whereBetween()">
+Filter where column value is between two values.
+
+```javascript
+const orders = db.table('Orders')
+  .whereBetween('total', [100, 500])
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter
+</ParamField>
+
+<ParamField path="range" type="array" required>
+  Array with two elements [min, max]
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+## Joins
+
+<Accordion title="join()">
+Add an inner join clause.
+
+```javascript
+const results = db.table('Orders')
+  .join('Users', 'Orders.user_id', '==', 'Users.id')
+  .select('Orders.*', 'Users.name')
+  .get();
+```
+
+<ParamField path="table" type="string" required>
+  Table to join
+</ParamField>
+
+<ParamField path="left" type="string" required>
+  Left column for join condition
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator (defaults to `==`)
+</ParamField>
+
+<ParamField path="right" type="string" required>
+  Right column for join condition
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="leftJoin()">
+Add a left join clause.
+
+```javascript
+const results = db.table('Users')
+  .leftJoin('Orders', 'Users.id', 'Orders.user_id')
+  .get();
+```
+
+<ParamField path="table" type="string" required>
+  Table to join
+</ParamField>
+
+<ParamField path="left" type="string" required>
+  Left column for join condition
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator (defaults to `==`)
+</ParamField>
+
+<ParamField path="right" type="string" required>
+  Right column for join condition
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+## Ordering & Limiting
+
+<Accordion title="orderBy()">
+Sort results by a column.
+
+```javascript
+const users = db.table('Users')
+  .orderBy('created_at', 'desc')
+  .get();
+
+// Multiple columns
+const users = db.table('Users')
+  .orderBy('role', 'asc')
+  .orderBy('name', 'asc')
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to sort by
+</ParamField>
+
+<ParamField path="dir" type="string" default="asc">
+  Sort direction: `asc` or `desc`
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="limit()">
+Limit the number of results.
+
+```javascript
+const topUsers = db.table('Users')
+  .orderBy('points', 'desc')
+  .limit(10)
+  .get();
+```
+
+<ParamField path="n" type="number" required>
+  Maximum number of results to return
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="offset()">
+Skip a number of results.
+
+```javascript
+const users = db.table('Users')
+  .offset(20)
+  .limit(10)
+  .get();
+```
+
+<ParamField path="n" type="number" required>
+  Number of results to skip
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+## Grouping & Aggregation
+
+<Accordion title="groupBy()">
+Group results by one or more columns.
+
+```javascript
+const statusGroups = db.table('Users')
+  .groupBy('status')
+  .get();
+
+const roleStatusGroups = db.table('Users')
+  .groupBy('role', 'status')
+  .get();
+```
+
+<ParamField path="...cols" type="string" required>
+  Column names to group by
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+
+<Note>
+  Grouped results include `count` and `items` properties for each group.
+</Note>
+</Accordion>
+
+<Accordion title="having()">
+Filter groups by a condition.
+
+```javascript
+const popularStatuses = db.table('Users')
+  .groupBy('status')
+  .having('count', '>', 10)
+  .get();
+```
+
+<ParamField path="column" type="string" required>
+  Column name to filter (use 'count' for group count)
+</ParamField>
+
+<ParamField path="operator" type="string">
+  Comparison operator (defaults to `==`)
+</ParamField>
+
+<ParamField path="value" type="any" required>
+  Value to compare against
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+## Retrieval Methods
+
+<Accordion title="get()">
+Execute the query and get results as a Collection.
+
+```javascript
+const users = db.table('Users')
+  .where('status', 'active')
+  .get();
+
+users.each(user => {
+  console.log(user.name);
+});
+```
+
+<ResponseField name="return" type="Collection">
+  Returns a Collection of results (or Model instances if using a Model query)
+</ResponseField>
+</Accordion>
+
+<Accordion title="first()">
+Retrieve the first result.
+
+```javascript
+const user = db.table('Users')
+  .where('email', 'john@example.com')
+  .first();
+
+if (user) {
+  console.log(user.name);
+}
+```
+
+<ResponseField name="return" type="object|Model|null">
+  Returns the first result or null if no results found
+</ResponseField>
+</Accordion>
+
+<Accordion title="pluck()">
+Retrieve an array of values for a single column.
+
+```javascript
+const emails = db.table('Users')
+  .where('status', 'active')
+  .pluck('email');
+
+console.log(emails); // ['john@example.com', 'jane@example.com', ...]
+```
+
+<ParamField path="column" type="string" required>
+  Column name to extract values from
+</ParamField>
+
+<ResponseField name="return" type="array">
+  Returns an array of column values
+</ResponseField>
+</Accordion>
+
+<Accordion title="count()">
+Get the count of matching records.
+
+```javascript
+const activeCount = db.table('Users')
+  .where('status', 'active')
+  .count();
+
+console.log(`${activeCount} active users`);
+```
+
+<ResponseField name="return" type="number">
+  Returns the number of matching records
+</ResponseField>
+</Accordion>
+
+<Accordion title="exists()">
+Check if any matching records exist.
+
+```javascript
+const hasAdmin = db.table('Users')
+  .where('role', 'admin')
+  .exists();
+
+if (hasAdmin) {
+  console.log('Admin user found');
+}
+```
+
+<ResponseField name="return" type="boolean">
+  Returns true if at least one record matches, false otherwise
+</ResponseField>
+</Accordion>
+
+<Accordion title="paginate()">
+Retrieve paginated results.
+
+```javascript
+const result = db.table('Users')
+  .where('status', 'active')
+  .orderBy('created_at', 'desc')
+  .paginate(15, 2);
+
+console.log(result.data); // Collection of results
+console.log(result.current_page); // 2
+console.log(result.total); // 150
+console.log(result.last_page); // 10
+
+// Or with options object
+const result = db.table('Users')
+  .paginate({ perPage: 25, page: 3 });
+```
+
+<ParamField path="perPage" type="number|object" default="15">
+  Items per page, or options object with `perPage` and `page` properties
+</ParamField>
+
+<ParamField path="page" type="number" default="1">
+  Current page number
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns pagination object with properties:
+  - `data`: Collection of items for current page
+  - `total`: Total number of matching records
+  - `per_page`: Items per page
+  - `current_page`: Current page number
+  - `last_page`: Last page number
+  - `from`: First item number on page (or null)
+  - `to`: Last item number on page (or null)
+</ResponseField>
+</Accordion>
+
+## Write Operations
+
+<Accordion title="insert()">
+Insert a new record.
+
+```javascript
+const inserted = db.table('Users')
+  .insert({
+    name: 'John Doe',
+    email: 'john@example.com',
+    status: 'active'
+  });
+
+console.log(inserted.id);
+```
+
+<ParamField path="obj" type="object" required>
+  Object with column-value pairs to insert
+</ParamField>
+
+<ResponseField name="return" type="object">
+  Returns the inserted object with ID and row number
+</ResponseField>
+</Accordion>
+
+<Accordion title="update()">
+Update matching records.
+
+```javascript
+const updatedCount = db.table('Users')
+  .where('status', 'pending')
+  .update({ status: 'active' });
+
+console.log(`Updated ${updatedCount} users`);
+```
+
+<ParamField path="patch" type="object" required>
+  Object with column-value pairs to update
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the number of records updated
+</ResponseField>
+</Accordion>
+
+<Accordion title="updateById()">
+Update a specific record by ID.
+
+```javascript
+const updated = db.table('Users')
+  .updateById(42, { 
+    name: 'Updated Name',
+    status: 'verified'
+  });
+```
+
+<ParamField path="id" type="any" required>
+  ID of the record to update
+</ParamField>
+
+<ParamField path="patch" type="object" required>
+  Object with column-value pairs to update
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the number of records updated (0 or 1)
+</ResponseField>
+</Accordion>
+
+<Accordion title="delete()">
+Delete matching records.
+
+```javascript
+const deletedCount = db.table('Users')
+  .where('status', 'spam')
+  .delete();
+
+console.log(`Deleted ${deletedCount} users`);
+```
+
+<ResponseField name="return" type="number">
+  Returns the number of records deleted
+</ResponseField>
+</Accordion>
+
+<Accordion title="deleteById()">
+Delete a specific record by ID.
+
+```javascript
+const deleted = db.table('Users')
+  .deleteById(42);
+```
+
+<ParamField path="id" type="any" required>
+  ID of the record to delete
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the number of records deleted (0 or 1)
+</ResponseField>
+</Accordion>
+
+<Accordion title="deleteRow()">
+Delete a specific row by row number.
+
+```javascript
+db.table('Users').deleteRow(10);
+```
+
+<ParamField path="rowNumber" type="number" required>
+  Row number to delete
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns 1
+</ResponseField>
+</Accordion>
+
+<Accordion title="increment()">
+Increment a column's value.
+
+```javascript
+const updated = db.table('Users')
+  .where('id', 42)
+  .increment('login_count', 1);
+
+// Default increment is 1
+db.table('Products')
+  .where('id', 10)
+  .increment('views');
+```
+
+<ParamField path="column" type="string" required>
+  Column name to increment
+</ParamField>
+
+<ParamField path="by" type="number" default="1">
+  Amount to increment by
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the number of records updated
+</ResponseField>
+</Accordion>
+
+<Accordion title="decrement()">
+Decrement a column's value.
+
+```javascript
+const updated = db.table('Products')
+  .where('id', 10)
+  .decrement('stock', 5);
+```
+
+<ParamField path="column" type="string" required>
+  Column name to decrement
+</ParamField>
+
+<ParamField path="by" type="number" default="1">
+  Amount to decrement by
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the number of records updated
+</ResponseField>
+</Accordion>
+
+## Aggregates
+
+<Accordion title="sum()">
+Get the sum of a column's values.
+
+```javascript
+const totalRevenue = db.table('Orders')
+  .where('status', 'completed')
+  .sum('total');
+
+console.log(`Total: $${totalRevenue}`);
+```
+
+<ParamField path="column" type="string" required>
+  Column name to sum
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the sum of matching records
+</ResponseField>
+</Accordion>
+
+<Accordion title="avg()">
+Get the average of a column's values.
+
+```javascript
+const avgPrice = db.table('Products')
+  .avg('price');
+
+console.log(`Average price: $${avgPrice}`);
+```
+
+<ParamField path="column" type="string" required>
+  Column name to average
+</ParamField>
+
+<ResponseField name="return" type="number">
+  Returns the average of matching records
+</ResponseField>
+</Accordion>
+
+<Accordion title="max()">
+Get the maximum value of a column.
+
+```javascript
+const highestScore = db.table('Scores')
+  .max('points');
+```
+
+<ParamField path="column" type="string" required>
+  Column name to find maximum
+</ParamField>
+
+<ResponseField name="return" type="number|null">
+  Returns the maximum value or null if no records
+</ResponseField>
+</Accordion>
+
+<Accordion title="min()">
+Get the minimum value of a column.
+
+```javascript
+const lowestPrice = db.table('Products')
+  .where('in_stock', true)
+  .min('price');
+```
+
+<ParamField path="column" type="string" required>
+  Column name to find minimum
+</ParamField>
+
+<ResponseField name="return" type="number|null">
+  Returns the minimum value or null if no records
+</ResponseField>
+</Accordion>
+
+## Advanced Features
+
+<Accordion title="with()">
+Eager load relationships (when using Models).
+
+```javascript
+const users = User.query()
+  .with('posts', 'comments')
+  .get();
+
+users.each(user => {
+  console.log(user.posts); // Already loaded
+});
+```
+
+<ParamField path="...relations" type="string" required>
+  Names of relationships to eager load
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+<Accordion title="scope()">
+Apply a model scope (when using Models).
+
+```javascript
+const activeUsers = User.query()
+  .scope('active')
+  .get();
+```
+
+<ParamField path="...scopes" type="string" required>
+  Names of scopes to apply
+</ParamField>
+
+<ResponseField name="return" type="QueryBuilder">
+  Returns the query builder for chaining
+</ResponseField>
+</Accordion>
+
+## Complete Example
+
+```javascript
+// Complex query with multiple clauses
+const results = db.table('Orders')
+  .join('Users', 'Orders.user_id', 'Users.id')
+  .join('Products', 'Orders.product_id', 'Products.id')
+  .select('Orders.*', 'Users.name as user_name', 'Products.name as product_name')
+  .where('Orders.status', 'completed')
+  .where('Orders.total', '>', 100)
+  .whereIn('Users.country', ['US', 'CA', 'UK'])
+  .orderBy('Orders.created_at', 'desc')
+  .limit(50)
+  .get();
+
+// Pagination
+const page = db.table('Users')
+  .where('status', 'active')
+  .orderBy('name')
+  .paginate({ perPage: 20, page: 2 });
+
+console.log(`Showing ${page.from}-${page.to} of ${page.total}`);
+page.data.each(user => console.log(user.name));
+
+// Aggregation
+const stats = {
+  total: db.table('Orders').count(),
+  revenue: db.table('Orders').where('status', 'completed').sum('total'),
+  avgOrder: db.table('Orders').avg('total'),
+  maxOrder: db.table('Orders').max('total')
+};
+
+// Grouping
+const statusCounts = db.table('Users')
+  .groupBy('status')
+  .having('count', '>', 5)
+  .get();
+
+statusCounts.forEach(group => {
+  console.log(`${group.status}: ${group.count} users`);
+});
+
+// Write operations
+db.table('Users').insert({
+  name: 'John Doe',
+  email: 'john@example.com'
+});
+
+db.table('Users')
+  .where('status', 'pending')
+  .update({ status: 'active' });
+
+db.table('Users')
+  .where('last_login', '<', '2020-01-01')
+  .delete();
+
+db.table('Products')
+  .where('id', 42)
+  .increment('views');
+```

@@ -1,0 +1,457 @@
+---
+title: 'Automatic Timestamps'
+description: 'Automatically track when records are created and updated'
+---
+
+**Automatic timestamps** let ServiceSQL manage `created_at` and `updated_at` fields for you. Enable this feature to automatically track when records are created and modified.
+
+## Enabling Timestamps
+
+Set `_timestamps` to `true` in your model:
+
+```javascript
+class User extends Model {}
+
+User._table = "Users";
+User._timestamps = true;
+
+User.use(db);
+```
+
+<Note>
+  Your sheet must have `created_at` and `updated_at` columns for timestamps to work. ServiceSQL stores them in ISO 8601 format (e.g., `"2025-01-15T10:30:00.000Z"`).
+</Note>
+
+## How It Works
+
+### On Creation
+
+When creating a new record, both timestamps are set automatically:
+
+```javascript
+const user = User.create({
+  name: "John Doe",
+  email: "john@example.com"
+});
+
+// Automatically added:
+Logger.log(user.created_at); // "2025-01-15T10:30:00.000Z"
+Logger.log(user.updated_at); // "2025-01-15T10:30:00.000Z"
+```
+
+### On Update
+
+When updating a record, only `updated_at` is changed:
+
+```javascript
+const user = User.find(1);
+Logger.log(user.created_at); // "2025-01-15T10:30:00.000Z"
+Logger.log(user.updated_at); // "2025-01-15T10:30:00.000Z"
+
+user.name = "Jane Doe";
+user.save();
+
+Logger.log(user.created_at); // "2025-01-15T10:30:00.000Z" (unchanged)
+Logger.log(user.updated_at); // "2025-01-15T11:45:00.000Z" (updated)
+```
+
+## Implementation Details
+
+From `Model.js:263-283`, timestamps are added during creation:
+
+```javascript
+static create(attrs = {}) {
+  const ModelClass = this;
+  const instance = new this(attrs);
+  const pk = ModelClass._primaryKey || "id";
+
+  ModelClass._fireEvent("creating", instance);
+  
+  // Add timestamps if enabled
+  if (ModelClass._timestamps) {
+    const now = new Date().toISOString();
+    instance.created_at = now;
+    instance.updated_at = now;
+  }
+  
+  const obj = instance._toObject(ModelClass);
+  const prepared = ModelClass._prepareForSave(obj);
+  const inserted = ModelClass.query().insert(prepared);
+  
+  if (inserted && inserted[pk] !== undefined) instance[pk] = inserted[pk];
+  if (inserted && inserted.__row !== undefined) instance.__row = inserted.__row;
+  
+  ModelClass._fireEvent("created", instance);
+  return instance;
+}
+```
+
+From `Model.js:285-320`, timestamps are updated during save:
+
+```javascript
+save() {
+  const ModelClass = this.constructor;
+  const pk = ModelClass._primaryKey || "id";
+  
+  if (this[pk] !== undefined && this[pk] !== null) {
+    // Updating existing record
+    ModelClass._fireEvent("updating", this);
+    
+    // Update timestamp
+    if (ModelClass._timestamps) {
+      this.updated_at = new Date().toISOString();
+    }
+    
+    const data = Object.assign({}, this);
+    delete data[pk];
+    const prepared = ModelClass._prepareForSave(data);
+    const updatedCount = ModelClass.query().updateById(this[pk], prepared);
+    
+    if (!updatedCount) {
+      throw new Error(`Update affected 0 rows for ${ModelClass.name} id=${this[pk]}`);
+    }
+    
+    ModelClass._fireEvent("updated", this);
+    return this;
+  }
+  
+  // Creating new record
+  ModelClass._fireEvent("creating", this);
+  
+  if (ModelClass._timestamps) {
+    this.created_at = new Date().toISOString();
+    this.updated_at = this.created_at;
+  }
+  
+  const obj = this._toObject(ModelClass);
+  const prepared = ModelClass._prepareForSave(obj);
+  const inserted = ModelClass.query().insert(prepared);
+  this[pk] = inserted[pk] || this[pk];
+  
+  ModelClass._fireEvent("created", this);
+  return this;
+}
+```
+
+## Practical Examples
+
+### Blog Posts with Timestamps
+
+```javascript
+class Post extends Model {}
+
+Post._table = "Posts";
+Post._timestamps = true;
+Post._fillable = ["title", "body", "user_id", "published"];
+
+Post.use(db);
+
+// Create a post
+const post = Post.create({
+  title: "My First Post",
+  body: "Hello, world!",
+  user_id: 1
+});
+
+Logger.log(post.created_at); // "2025-01-15T10:00:00.000Z"
+Logger.log(post.updated_at); // "2025-01-15T10:00:00.000Z"
+
+// Update the post
+post.title = "My Updated Post";
+post.save();
+
+Logger.log(post.created_at); // "2025-01-15T10:00:00.000Z" (unchanged)
+Logger.log(post.updated_at); // "2025-01-15T10:15:00.000Z" (updated)
+```
+
+### User Registration Example
+
+```javascript
+class User extends Model {
+  // Check if account is new (created in last 24 hours)
+  isNewAccount() {
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    return new Date(this.created_at).getTime() > oneDayAgo;
+  }
+
+  // Check if recently updated (in last hour)
+  isRecentlyUpdated() {
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    return new Date(this.updated_at).getTime() > oneHourAgo;
+  }
+}
+
+User._table = "Users";
+User._timestamps = true;
+
+User.use(db);
+
+const user = User.create({
+  name: "John Doe",
+  email: "john@example.com"
+});
+
+Logger.log(user.isNewAccount());       // true
+Logger.log(user.isRecentlyUpdated());  // true
+```
+
+## Formatting Timestamps
+
+Use casts to automatically convert timestamp strings to Date objects:
+
+```javascript
+class Post extends Model {}
+
+Post._table = "Posts";
+Post._timestamps = true;
+Post._casts = {
+  created_at: "date",
+  updated_at: "date"
+};
+
+Post.use(db);
+
+const post = Post.find(1);
+Logger.log(post.created_at instanceof Date); // true
+Logger.log(post.created_at.toLocaleDateString()); // "1/15/2025"
+```
+
+### Custom Date Formatting with Accessors
+
+```javascript
+class Post extends Model {
+  getCreatedDateAttribute(value) {
+    const date = new Date(this.created_at);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  }
+
+  getUpdatedDateAttribute(value) {
+    const date = new Date(this.updated_at);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 60) return `${diffMins} minutes ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)} hours ago`;
+    return `${Math.floor(diffMins / 1440)} days ago`;
+  }
+}
+
+Post._table = "Posts";
+Post._timestamps = true;
+
+Post.use(db);
+
+const post = Post.find(1);
+Logger.log(post.created_date); // "January 15, 2025"
+Logger.log(post.updated_date); // "5 minutes ago"
+```
+
+## Querying by Timestamps
+
+```javascript
+// Posts created today
+const today = new Date();
+today.setHours(0, 0, 0, 0);
+const todaysPosts = Post.where("created_at", ">=", today.toISOString()).get();
+
+// Posts updated in the last hour
+const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+const recentlyUpdated = Post.where("updated_at", ">=", oneHourAgo.toISOString()).get();
+
+// Posts created between dates
+const start = new Date("2025-01-01");
+const end = new Date("2025-01-31");
+const januaryPosts = Post.where("created_at", ">=", start.toISOString())
+                         .where("created_at", "<=", end.toISOString())
+                         .get();
+```
+
+## Timestamp Scopes
+
+Create reusable scopes for common timestamp queries:
+
+```javascript
+class Post extends Model {
+  static scopeCreatedAfter(query, date) {
+    return query.where("created_at", ">=", date.toISOString());
+  }
+
+  static scopeCreatedBefore(query, date) {
+    return query.where("created_at", "<=", date.toISOString());
+  }
+
+  static scopeUpdatedRecently(query, hoursAgo = 24) {
+    const date = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+    return query.where("updated_at", ">=", date.toISOString());
+  }
+
+  static scopeCreatedToday(query) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return query.where("created_at", ">=", today.toISOString());
+  }
+}
+
+Post._table = "Posts";
+Post._timestamps = true;
+
+Post.use(db);
+
+// Usage
+const todaysPosts = Post.scope("createdToday").get();
+const recentlyUpdated = Post.scope("updatedRecently", 6).get();
+const lastWeek = Post.scope("createdAfter", new Date("2025-01-08")).get();
+```
+
+## Default Timestamp Fields
+
+From `Model.js:455`, ServiceSQL expects these default timestamp fields:
+
+```javascript
+Model._dates = ["created_at", "updated_at", "deleted_at"];
+```
+
+These fields are automatically cast to Date objects unless you specify a custom cast.
+
+## Disabling Timestamps
+
+If you don't need timestamps, simply don't enable them (default is `false`):
+
+```javascript
+class Log extends Model {}
+
+Log._table = "Logs";
+// _timestamps = false by default
+
+Log.use(db);
+
+const log = Log.create({
+  message: "System started"
+});
+// No created_at or updated_at added
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Enable timestamps for user-facing data">
+  Always use timestamps for models that represent user data:
+  
+  ```javascript
+  User._timestamps = true;
+  Post._timestamps = true;
+  Comment._timestamps = true;
+  ```
+</Step>
+
+<Step title="Cast timestamps to dates">
+  Use date casting for easier date manipulation:
+  
+  ```javascript
+  Post._timestamps = true;
+  Post._casts = {
+    created_at: "date",
+    updated_at: "date"
+  };
+  ```
+</Step>
+
+<Step title="Create helper methods for common date checks">
+  ```javascript
+  isNew() {
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    return new Date(this.created_at).getTime() > oneDayAgo;
+  }
+  ```
+</Step>
+
+<Step title="Use scopes for timestamp queries">
+  Create reusable scopes for common timestamp filters:
+  
+  ```javascript
+  static scopeCreatedToday(query) {
+    const today = new Date().setHours(0, 0, 0, 0);
+    return query.where("created_at", ">=", new Date(today).toISOString());
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Common Patterns
+
+<Accordion title="Tracking Content Age">
+
+```javascript
+class Article extends Model {
+  getDaysOldAttribute(value) {
+    const created = new Date(this.created_at);
+    const now = new Date();
+    const diffTime = Math.abs(now - created);
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }
+
+  isStale() {
+    return this.days_old > 30;
+  }
+}
+
+Article._table = "Articles";
+Article._timestamps = true;
+
+Article.use(db);
+
+const article = Article.find(1);
+Logger.log(`Article is ${article.days_old} days old`);
+if (article.isStale()) {
+  Logger.log("This article needs updating");
+}
+```
+
+</Accordion>
+
+<Accordion title="Last Modified By">
+
+```javascript
+class Document extends Model {}
+
+Document._table = "Documents";
+Document._timestamps = true;
+Document._fillable = ["title", "content", "modified_by"];
+
+Document.use(db);
+
+// Override save to track who modified
+Document.prototype.saveWithUser = function(userId) {
+  this.modified_by = userId;
+  return this.save();
+};
+
+const doc = Document.find(1);
+doc.content = "Updated content";
+doc.saveWithUser(currentUserId);
+
+Logger.log(`Last modified by user ${doc.modified_by} at ${doc.updated_at}`);
+```
+
+</Accordion>
+
+## Summary
+
+| Feature | Configuration | Behavior |
+|---------|--------------|----------|
+| Enable timestamps | `_timestamps = true` | Auto-manages created_at/updated_at |
+| On create | Automatic | Both timestamps set to current time |
+| On update | Automatic | Only updated_at changes |
+| Default fields | `created_at`, `updated_at` | ISO 8601 format |
+| Date casting | `_casts: { created_at: "date" }` | Converts to Date objects |
+
+<Tip>
+  Timestamps are essential for audit trails, sorting by recency, and understanding data lifecycle. Enable them on all models that represent business data.
+</Tip>

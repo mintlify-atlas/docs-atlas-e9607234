@@ -1,0 +1,518 @@
+---
+title: Installation
+description: Complete installation guide for ServiceSQL in Google Apps Script projects
+---
+
+# Installation
+
+This guide covers everything you need to install and configure ServiceSQL in your Google Apps Script project.
+
+## Installation Methods
+
+There are two ways to add ServiceSQL to your project:
+
+<CardGroup cols={2}>
+  <Card title="Library (Recommended)" icon="book">
+    Add ServiceSQL as a Google Apps Script library - easier to update and maintain
+  </Card>
+  
+  <Card title="Direct Copy" icon="copy">
+    Copy the source code directly into your project - full control and customization
+  </Card>
+</CardGroup>
+
+## Method 1: Google Apps Script Library (Recommended)
+
+This is the recommended approach for most projects.
+
+<Steps>
+  <Step title="Get the Script ID">
+    You need the ServiceSQL library's Script ID. If you're using a published version, you'll receive this from the library publisher.
+    
+    <Note>
+      The Script ID is a long string that looks like: `1abc...xyz`
+    </Note>
+  </Step>
+  
+  <Step title="Open your Apps Script project">
+    1. Go to [script.google.com](https://script.google.com)
+    2. Open your project or create a new one
+    3. You should see the script editor
+  </Step>
+  
+  <Step title="Add the library">
+    In the Apps Script editor:
+    
+    1. Click the **Libraries** icon (`+`) in the left sidebar
+    2. In the "Script ID" field, paste the ServiceSQL Script ID
+    3. Click **Look up**
+    4. Select the latest version from the dropdown
+    5. Set the identifier to `ServiceSQL` (recommended)
+    6. Click **Add**
+  </Step>
+  
+  <Step title="Verify installation">
+    Create a new file or open `Code.gs` and test the installation:
+    
+    ```javascript Code.gs
+    function testInstallation() {
+      // Initialize ServiceSQL
+      const db = APPSQL.init({
+        spreadsheetId: "YOUR_SPREADSHEET_ID"
+      });
+      
+      Logger.log("ServiceSQL installed successfully!");
+      Logger.log(db);
+    }
+    ```
+    
+    Run the function. If you see no errors, installation was successful!
+  </Step>
+</Steps>
+
+### Updating the Library
+
+When a new version of ServiceSQL is released:
+
+1. Go to **Libraries** in the left sidebar
+2. Click on **ServiceSQL**
+3. Select the new version from the dropdown
+4. Click **Save**
+
+<Warning>
+  Always test your application after updating to ensure compatibility with the new version.
+</Warning>
+
+## Method 2: Copy Source Code Directly
+
+For projects that need customization or don't want external dependencies:
+
+<Steps>
+  <Step title="Get the source code">
+    Download or clone the ServiceSQL source code from the repository:
+    
+    ```bash
+    git clone https://github.com/YOUR_REPO/ServiceSQL.git
+    ```
+    
+    The source files are located in the `src/` directory.
+  </Step>
+  
+  <Step title="Copy files to your project">
+    Copy all `.js` files from the `src/` directory into your Google Apps Script project:
+    
+    Required files:
+    - `APPSQL.js` - Main class
+    - `Model.js` - Model base class
+    - `QueryBuilder.js` - Query builder
+    - `Collection.js` - Collection wrapper
+    - `Table.js` - Table helper
+    - `Driver.js` - Abstract driver
+    - `SheetDriver.js` - Sheets implementation
+    - `EagerLoader.js` - Relationship loader
+    - `Utils.js` - Utilities
+    - `Types.js` - Type definitions
+    
+    Optional files:
+    - `CacheBuilder.js` - Caching support
+    - `TriggerBuilder.js` - Trigger management
+    - `GmailBuilder.js` - Gmail integration
+    - `relations/` folder - All relationship classes
+  </Step>
+  
+  <Step title="Verify the installation">
+    Test with the same verification code:
+    
+    ```javascript
+    function testInstallation() {
+      const db = APPSQL.init({
+        spreadsheetId: "YOUR_SPREADSHEET_ID"
+      });
+      
+      Logger.log("ServiceSQL ready!");
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  When copying source code directly, you're responsible for updating files manually when new versions are released.
+</Note>
+
+## Configuration
+
+### Basic Configuration
+
+Initialize ServiceSQL with your spreadsheet:
+
+```javascript
+const db = APPSQL.init({
+  spreadsheetId: "YOUR_SPREADSHEET_ID"
+});
+```
+
+### Using the Active Spreadsheet
+
+If your script is bound to a spreadsheet (container-bound script):
+
+```javascript
+const db = APPSQL.init({
+  spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId()
+});
+```
+
+### Global Instance Pattern
+
+For larger projects, create a global database instance:
+
+<CodeGroup>
+```javascript Database.gs
+// Create a dedicated file for your database configuration
+function getDatabase() {
+  // APPSQL.init() returns a singleton instance
+  return APPSQL.init({
+    spreadsheetId: PropertiesService.getScriptProperties().getProperty('DB_ID')
+  });
+}
+
+// Initialize all models
+function initModels() {
+  const db = getDatabase();
+  
+  User.use(db);
+  Post.use(db);
+  Comment.use(db);
+  
+  return db;
+}
+```
+
+```javascript Usage
+function someFunction() {
+  initModels();
+  
+  // Now use models anywhere
+  const users = User.all();
+  const posts = Post.with('author').get();
+}
+```
+</CodeGroup>
+
+### Environment-Based Configuration
+
+Manage multiple environments (development, production):
+
+```javascript Config.gs
+function getConfig() {
+  const env = PropertiesService.getScriptProperties().getProperty('ENV') || 'development';
+  
+  const configs = {
+    development: {
+      spreadsheetId: "DEV_SPREADSHEET_ID"
+    },
+    production: {
+      spreadsheetId: "PROD_SPREADSHEET_ID"
+    }
+  };
+  
+  return configs[env];
+}
+
+function getDatabase() {
+  const config = getConfig();
+  return APPSQL.init(config);
+}
+```
+
+Set the environment using Script Properties:
+```javascript
+PropertiesService.getScriptProperties().setProperty('ENV', 'production');
+```
+
+## Script Properties Setup
+
+Store sensitive configuration in Script Properties:
+
+<Steps>
+  <Step title="Open Project Settings">
+    In the Apps Script editor, click **Project Settings** (gear icon) in the left sidebar.
+  </Step>
+  
+  <Step title="Add Script Properties">
+    Scroll to "Script Properties" and click **Add script property**:
+    
+    - Property: `DB_SPREADSHEET_ID`
+    - Value: Your spreadsheet ID
+    
+    Click **Save script properties**
+  </Step>
+  
+  <Step title="Use in your code">
+    ```javascript
+    function getDatabase() {
+      const spreadsheetId = PropertiesService
+        .getScriptProperties()
+        .getProperty('DB_SPREADSHEET_ID');
+      
+      return APPSQL.init({ spreadsheetId });
+    }
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Script Properties are ideal for storing configuration that changes between environments or shouldn't be in your code.
+</Note>
+
+## Setting Up Your First Database
+
+Once ServiceSQL is installed, set up your database structure:
+
+### 1. Create Tables
+
+```javascript Setup.gs
+function setupDatabase() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  // Create Users table
+  db.table("Users").create([
+    "id",
+    "name",
+    "email",
+    "age",
+    "status",
+    "created_at",
+    "updated_at"
+  ]);
+  
+  // Create Posts table
+  db.table("Posts").create([
+    "id",
+    "user_id",
+    "title",
+    "body",
+    "published",
+    "created_at",
+    "updated_at"
+  ]);
+  
+  Logger.log("Database tables created!");
+}
+```
+
+### 2. Define Models
+
+```javascript Models.gs
+class User extends Model {
+  static _table = "Users";
+  static _primaryKey = "id";
+  static _timestamps = true;
+  static _fillable = ["name", "email", "age", "status"];
+  static _casts = {
+    age: "int"
+  };
+  
+  posts() {
+    return this.hasMany(Post, "user_id");
+  }
+}
+
+class Post extends Model {
+  static _table = "Posts";
+  static _primaryKey = "id";
+  static _timestamps = true;
+  static _fillable = ["user_id", "title", "body", "published"];
+  static _casts = {
+    published: "bool"
+  };
+  
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+```
+
+### 3. Initialize Models
+
+```javascript Init.gs
+function initializeApp() {
+  const db = APPSQL.init({
+    spreadsheetId: "YOUR_SPREADSHEET_ID"
+  });
+  
+  // Connect models to database
+  User.use(db);
+  Post.use(db);
+  
+  Logger.log("App initialized!");
+}
+```
+
+## Permissions and Authorization
+
+ServiceSQL needs permissions to access your spreadsheets:
+
+<Steps>
+  <Step title="First Run">
+    The first time you run a function that uses ServiceSQL, Google will ask for authorization.
+  </Step>
+  
+  <Step title="Review Permissions">
+    Click **Review permissions** and sign in with your Google account.
+  </Step>
+  
+  <Step title="Advanced Settings">
+    If you see a warning screen, click **Advanced** and then **Go to [Your Project Name] (unsafe)**.
+  </Step>
+  
+  <Step title="Allow Access">
+    Review the permissions and click **Allow**.
+  </Step>
+</Steps>
+
+<Warning>
+  ServiceSQL requires permission to:
+  - View and manage spreadsheets in Google Drive
+  - Connect to external services (if using optional features)
+</Warning>
+
+## Project Structure Recommendations
+
+Organize your ServiceSQL project for maintainability:
+
+```
+Your Apps Script Project/
+├── Code.gs              # Main entry point
+├── Config.gs            # Configuration and initialization
+├── Models.gs            # Model definitions
+│   ├── User
+│   ├── Post
+│   └── Comment
+├── Controllers.gs       # Business logic
+├── Services.gs          # Reusable service functions
+└── Setup.gs            # Database setup and migrations
+```
+
+### Example Project Structure
+
+<CodeGroup>
+```javascript Code.gs
+// Main application entry points
+function doGet(e) {
+  initializeApp();
+  // Your web app logic
+}
+
+function doPost(e) {
+  initializeApp();
+  // Handle POST requests
+}
+```
+
+```javascript Config.gs
+// Configuration management
+const CONFIG = {
+  spreadsheetId: PropertiesService
+    .getScriptProperties()
+    .getProperty('DB_ID')
+};
+
+function getDatabase() {
+  return APPSQL.init(CONFIG);
+}
+
+function initializeApp() {
+  const db = getDatabase();
+  User.use(db);
+  Post.use(db);
+  Comment.use(db);
+}
+```
+
+```javascript Models.gs
+// All model definitions
+class User extends Model {
+  static _table = "Users";
+  // ... model configuration
+}
+
+class Post extends Model {
+  static _table = "Posts";
+  // ... model configuration
+}
+```
+</CodeGroup>
+
+## Verification Checklist
+
+Before moving to production, verify your installation:
+
+- [ ] ServiceSQL library added and correct version selected
+- [ ] Test function runs without errors
+- [ ] Database connection successful
+- [ ] Tables created successfully
+- [ ] Models can query data
+- [ ] Relationships work as expected
+- [ ] Script permissions granted
+- [ ] Script properties configured (if used)
+
+## Next Steps
+
+Now that ServiceSQL is installed, you're ready to start building:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first application in 5 minutes
+  </Card>
+  
+  <Card title="Models Guide" icon="cube" href="/core/models">
+    Learn about model features and best practices
+  </Card>
+  
+  <Card title="Query Builder" icon="filter" href="/core/query-builder">
+    Master the query builder API
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="/api/appsql">
+    Complete API documentation
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+### Library not found
+**Problem**: Error when adding library by Script ID
+
+**Solution**: Verify the Script ID is correct and the library is published. Contact the library maintainer for the correct Script ID.
+
+### Authorization issues
+**Problem**: Permission denied errors
+
+**Solution**: Remove the project from your Google Account's authorized apps and reauthorize. Go to [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+### Spreadsheet not found
+**Problem**: "Spreadsheet not found" error
+
+**Solution**: 
+- Verify the spreadsheet ID is correct
+- Ensure you have access to the spreadsheet
+- Check that the spreadsheet hasn't been deleted
+
+### Models not working
+**Problem**: Models return undefined or throw errors
+
+**Solution**: Make sure you've called `Model.use(db)` before using any model methods.
+
+## Getting Help
+
+If you encounter issues during installation:
+
+1. Check the [Troubleshooting section](#troubleshooting) above
+2. Review the [Quickstart guide](/quickstart) for working examples
+3. Consult the [API Reference](/api/appsql) for detailed documentation
+4. Search existing issues on GitHub
+5. Open a new issue with a detailed description
+
+Ready to start building? Head to the [Quickstart guide](/quickstart)!

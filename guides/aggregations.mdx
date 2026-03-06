@@ -1,0 +1,520 @@
+---
+title: 'Aggregations'
+description: 'Perform COUNT, SUM, AVG, MAX, and MIN operations in ServiceSQL'
+---
+
+Aggregation functions allow you to compute statistics and summaries from your data. ServiceSQL provides five core aggregation methods inspired by SQL: COUNT, SUM, AVG, MAX, and MIN.
+
+## Available Aggregation Methods
+
+<CardGroup cols={2}>
+  <Card title="count()" icon="hashtag">
+    Count the number of records
+  </Card>
+  <Card title="sum()" icon="plus">
+    Calculate the total sum of a column
+  </Card>
+  <Card title="avg()" icon="chart-line">
+    Calculate the average value
+  </Card>
+  <Card title="max()" icon="arrow-up">
+    Find the maximum value
+  </Card>
+  <Card title="min()" icon="arrow-down">
+    Find the minimum value
+  </Card>
+  <Card title="exists()" icon="check">
+    Check if any records exist
+  </Card>
+</CardGroup>
+
+## COUNT - Counting Records
+
+### Basic Count
+
+```javascript
+const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+
+// Count all users
+const totalUsers = db.table("Users").count();
+Logger.log(`Total users: ${totalUsers}`);
+```
+
+### Count with Conditions
+
+```javascript
+// Count active users
+const activeCount = db.table("Users")
+  .where("status", "active")
+  .count();
+
+Logger.log(`Active users: ${activeCount}`);
+
+// Count users by age range
+const adultsCount = db.table("Users")
+  .where("age", ">=", 18)
+  .where("age", "<", 65)
+  .count();
+
+Logger.log(`Adults: ${adultsCount}`);
+```
+
+### Shorthand on Table
+
+The `Table` class provides a direct `count()` method:
+
+```javascript
+const users = db.table("Users");
+const total = users.count(); // Counts all records
+```
+
+## SUM - Calculating Totals
+
+The `sum()` method calculates the total of a numeric column:
+
+```javascript
+// Total revenue from completed orders
+const totalRevenue = db.table("Orders")
+  .where("status", "completed")
+  .sum("amount");
+
+Logger.log(`Total revenue: $${totalRevenue}`);
+
+// Sum with multiple conditions
+const monthlyRevenue = db.table("Orders")
+  .where("status", "completed")
+  .where("created_at", ">=", "2026-03-01")
+  .where("created_at", "<", "2026-04-01")
+  .sum("amount");
+
+Logger.log(`March revenue: $${monthlyRevenue}`);
+```
+
+<Note>
+  Non-numeric values are treated as `0` in the sum calculation. Make sure your data is properly formatted.
+</Note>
+
+## AVG - Computing Averages
+
+The `avg()` method calculates the average value:
+
+```javascript
+// Average user age
+const avgAge = db.table("Users")
+  .where("status", "active")
+  .avg("age");
+
+Logger.log(`Average age: ${avgAge.toFixed(1)} years`);
+
+// Average order value
+const avgOrderValue = db.table("Orders")
+  .where("status", "completed")
+  .avg("amount");
+
+Logger.log(`Average order: $${avgOrderValue.toFixed(2)}`);
+
+// Average for specific segment
+const premiumAvg = db.table("Users")
+  .where("subscription", "premium")
+  .avg("lifetime_value");
+```
+
+## MAX - Finding Maximum Values
+
+```javascript
+// Highest product price
+const maxPrice = db.table("Products").max("price");
+Logger.log(`Most expensive product: $${maxPrice}`);
+
+// Highest score this month
+const topScore = db.table("GameScores")
+  .where("created_at", ">=", "2026-03-01")
+  .max("score");
+
+// Latest timestamp
+const latestActivity = db.table("UserActivity")
+  .max("last_seen");
+```
+
+<Tip>
+  `max()` works with any comparable values: numbers, strings (alphabetically), and dates.
+</Tip>
+
+## MIN - Finding Minimum Values
+
+```javascript
+// Lowest product price
+const minPrice = db.table("Products")
+  .where("stock", ">", 0)
+  .min("price");
+
+Logger.log(`Cheapest in-stock product: $${minPrice}`);
+
+// Earliest registration date
+const firstUser = db.table("Users").min("created_at");
+Logger.log(`First user registered: ${firstUser}`);
+
+// Minimum order value (exclude zeros)
+const minOrderValue = db.table("Orders")
+  .where("amount", ">", 0)
+  .min("amount");
+```
+
+## EXISTS - Checking for Records
+
+The `exists()` method returns `true` if any records match:
+
+```javascript
+// Check if there are any admins
+const hasAdmins = db.table("Users")
+  .where("role", "admin")
+  .exists();
+
+if (hasAdmins) {
+  Logger.log("System has administrators");
+} else {
+  Logger.log("⚠️ No administrators found!");
+}
+
+// Check for pending orders
+const hasPendingOrders = db.table("Orders")
+  .where("status", "pending")
+  .exists();
+
+if (hasPendingOrders) {
+  sendPendingOrdersNotification();
+}
+```
+
+<Note>
+  `exists()` is more efficient than `count() > 0` because it stops searching as soon as it finds one match.
+</Note>
+
+## Combining Aggregations
+
+### Dashboard Statistics
+
+```javascript
+function getDashboardStats() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  return {
+    users: {
+      total: db.table("Users").count(),
+      active: db.table("Users").where("status", "active").count(),
+      avgAge: db.table("Users").avg("age")
+    },
+    orders: {
+      total: db.table("Orders").count(),
+      completed: db.table("Orders").where("status", "completed").count(),
+      revenue: db.table("Orders").where("status", "completed").sum("amount"),
+      avgOrderValue: db.table("Orders").where("status", "completed").avg("amount")
+    },
+    products: {
+      total: db.table("Products").count(),
+      inStock: db.table("Products").where("stock", ">", 0).count(),
+      maxPrice: db.table("Products").max("price"),
+      minPrice: db.table("Products").min("price")
+    }
+  };
+}
+
+const stats = getDashboardStats();
+Logger.log(JSON.stringify(stats, null, 2));
+```
+
+### Sales Report
+
+```javascript
+function getSalesReport(startDate, endDate) {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  const ordersQuery = db.table("Orders")
+    .where("status", "completed")
+    .where("created_at", ">=", startDate)
+    .where("created_at", "<=", endDate);
+  
+  const totalOrders = ordersQuery.count();
+  const totalRevenue = ordersQuery.sum("amount");
+  const avgOrderValue = ordersQuery.avg("amount");
+  const largestOrder = ordersQuery.max("amount");
+  const smallestOrder = ordersQuery.min("amount");
+  
+  return {
+    period: { start: startDate, end: endDate },
+    orders: totalOrders,
+    revenue: totalRevenue,
+    averageOrder: avgOrderValue,
+    largestOrder: largestOrder,
+    smallestOrder: smallestOrder,
+    // Calculate growth
+    revenuePerDay: totalRevenue / daysBetween(startDate, endDate)
+  };
+}
+```
+
+## Aggregations with GROUP BY
+
+When using `groupBy()`, each group includes a `count` property:
+
+```javascript
+const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+
+// Count orders by country
+const byCountry = db.table("Orders")
+  .groupBy("country")
+  .get();
+
+byCountry.forEach(group => {
+  Logger.log(`${group.keys.country}: ${group.count} orders`);
+  // Calculate sum for this group
+  const groupTotal = group.items.reduce((sum, item) => sum + item.amount, 0);
+  Logger.log(`  Total: $${groupTotal}`);
+});
+```
+
+### Filtering Groups with HAVING
+
+Use `having()` to filter groups by their count:
+
+```javascript
+// Countries with more than 10 orders
+const popularCountries = db.table("Orders")
+  .groupBy("country")
+  .having("count", ">", 10)
+  .get();
+
+popularCountries.forEach(group => {
+  Logger.log(`${group.keys.country}: ${group.count} orders`);
+});
+
+// Multiple grouping columns
+const stats = db.table("Orders")
+  .groupBy("country", "status")
+  .having("count", ">=", 5)
+  .get();
+```
+
+<Warning>
+  `having()` only works with `groupBy()`. Use `where()` to filter individual records before grouping.
+</Warning>
+
+## Aggregations with Collections
+
+After retrieving data, you can use Collection methods for aggregations:
+
+```javascript
+const users = db.table("Users")
+  .where("status", "active")
+  .get(); // Returns Collection
+
+// Count using collection
+const count = users.count();
+
+// Sum using collection
+const totalPoints = users.sum("points");
+
+// Average using collection
+const avgAge = users.avg("age");
+
+// Max/Min using collection
+const maxPoints = users.max("points");
+const minPoints = users.min("points");
+```
+
+<Tip>
+  Use QueryBuilder aggregations (like `.sum()`) when you only need the result. Use Collections when you need both the data and aggregations.
+</Tip>
+
+## Real-World Examples
+
+### User Analytics
+
+```javascript
+function getUserAnalytics() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  const usersTable = db.table("Users");
+  
+  return {
+    overview: {
+      total: usersTable.count(),
+      active: usersTable.where("status", "active").count(),
+      verified: usersTable.where("verified", true).count(),
+      premium: usersTable.where("subscription", "premium").count()
+    },
+    demographics: {
+      avgAge: usersTable.avg("age"),
+      youngestAge: usersTable.min("age"),
+      oldestAge: usersTable.max("age")
+    },
+    engagement: {
+      avgLoginCount: usersTable.avg("login_count"),
+      mostActiveUser: usersTable.max("login_count"),
+      totalPoints: usersTable.sum("points")
+    },
+    growth: {
+      thisMonth: usersTable
+        .where("created_at", ">=", getStartOfMonth())
+        .count(),
+      lastMonth: usersTable
+        .where("created_at", ">=", getStartOfLastMonth())
+        .where("created_at", "<", getStartOfMonth())
+        .count()
+    }
+  };
+}
+```
+
+### E-commerce Metrics
+
+```javascript
+function getEcommerceMetrics() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  // Filter to completed orders only
+  const completedOrders = db.table("Orders")
+    .where("status", "completed");
+  
+  const totalRevenue = completedOrders.sum("amount");
+  const orderCount = completedOrders.count();
+  const avgOrderValue = completedOrders.avg("amount");
+  
+  return {
+    revenue: {
+      total: totalRevenue,
+      average: avgOrderValue,
+      largest: completedOrders.max("amount"),
+      smallest: completedOrders.min("amount")
+    },
+    orders: {
+      completed: orderCount,
+      pending: db.table("Orders").where("status", "pending").count(),
+      cancelled: db.table("Orders").where("status", "cancelled").count()
+    },
+    customers: {
+      total: db.table("Customers").count(),
+      withOrders: db.table("Customers")
+        .join("Orders", "Customers.id", "Orders.customer_id")
+        .distinct()
+        .count(),
+      avgLifetimeValue: db.table("Customers").avg("lifetime_value")
+    },
+    products: {
+      total: db.table("Products").count(),
+      inStock: db.table("Products").where("stock", ">", 0).count(),
+      outOfStock: db.table("Products").where("stock", 0).count(),
+      avgPrice: db.table("Products").avg("price")
+    }
+  };
+}
+```
+
+### Performance Tracking
+
+```javascript
+function trackPerformance(userId, period = 30) {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - period);
+  
+  const userActivities = db.table("Activities")
+    .where("user_id", userId)
+    .where("created_at", ">=", cutoffDate.toISOString());
+  
+  return {
+    period: `Last ${period} days`,
+    activities: {
+      total: userActivities.count(),
+      avgPerDay: userActivities.count() / period
+    },
+    points: {
+      total: userActivities.sum("points_earned"),
+      average: userActivities.avg("points_earned"),
+      best: userActivities.max("points_earned")
+    },
+    time: {
+      totalMinutes: userActivities.sum("duration_minutes"),
+      avgSession: userActivities.avg("duration_minutes"),
+      longestSession: userActivities.max("duration_minutes")
+    }
+  };
+}
+```
+
+## Performance Tips
+
+### Use Aggregations Instead of Loading All Data
+
+<Card title="Good Practice" icon="check">
+  ```javascript
+  // ✅ Efficient - only computes the sum
+  const total = db.table("Orders")
+    .where("status", "completed")
+    .sum("amount");
+  ```
+</Card>
+
+<Card title="Avoid" icon="x">
+  ```javascript
+  // ❌ Inefficient - loads all records into memory
+  const orders = db.table("Orders")
+    .where("status", "completed")
+    .get();
+  const total = orders.reduce((sum, o) => sum + o.amount, 0);
+  ```
+</Card>
+
+### Filter Before Aggregating
+
+```javascript
+// ✅ Filter first, then aggregate
+const activeUserCount = db.table("Users")
+  .where("status", "active")     // Filter first
+  .where("verified", true)       // More filters
+  .count();                       // Then count
+
+// The aggregation only processes filtered records
+```
+
+### Combine Related Aggregations
+
+```javascript
+// ✅ Reuse the query for multiple aggregations
+const ordersQuery = db.table("Orders")
+  .where("status", "completed")
+  .where("created_at", ">=", startDate);
+
+const stats = {
+  count: ordersQuery.count(),
+  total: ordersQuery.sum("amount"),
+  average: ordersQuery.avg("amount"),
+  max: ordersQuery.max("amount")
+};
+```
+
+<Warning>
+  Each aggregation method executes a separate query. Store intermediate queries in variables when computing multiple aggregations on the same dataset.
+</Warning>
+
+## Summary
+
+ServiceSQL provides powerful aggregation methods:
+
+- **`count()`** - Count records matching conditions
+- **`sum(column)`** - Calculate totals
+- **`avg(column)`** - Compute averages
+- **`max(column)`** - Find maximum values
+- **`min(column)`** - Find minimum values
+- **`exists()`** - Check if records exist
+
+All aggregation methods:
+- Work with `where()` conditions
+- Can be combined with `groupBy()` and `having()`
+- Are available on both QueryBuilder and Collections
+- Return computed values, not full records
+
+For related topics, see:
+- [QueryBuilder](/api/query-builder) - Building queries
+- [Pagination](/guides/pagination) - Working with large datasets
+- [Best Practices](/guides/best-practices) - Performance optimization

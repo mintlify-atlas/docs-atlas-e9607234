@@ -1,0 +1,374 @@
+---
+title: Table
+description: Manage Google Sheets as database tables with a simple API
+---
+
+The `Table` class provides a database-like interface for managing Google Sheets, allowing you to create, modify, and manage sheet structures as if they were SQL tables.
+
+## Constructor
+
+```javascript
+const table = new Table(name, columns, driver)
+```
+
+<ParamField path="name" type="string" required>
+  Name of the sheet/table
+</ParamField>
+
+<ParamField path="columns" type="array">
+  Array of column names (headers) for the table
+</ParamField>
+
+<ParamField path="driver" type="SheetDriver">
+  SheetDriver instance for sheet operations
+</ParamField>
+
+## Table Structure Methods
+
+### create()
+
+Create a new sheet with headers or update existing headers.
+
+```javascript
+table.create(headers, overwrite)
+```
+
+<ParamField path="headers" type="array">
+  Array of header names. Defaults to `this.columns` if not provided
+</ParamField>
+
+<ParamField path="overwrite" type="boolean" default={false}>
+  If true, clears all data and rewrites headers. Use with caution
+</ParamField>
+
+**Example:**
+
+```javascript
+const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+const users = db.table("Users");
+
+// Create table with headers
+users.create(["id", "name", "email", "age", "created_at"]);
+```
+
+### drop()
+
+Delete the sheet entirely.
+
+```javascript
+table.drop()
+```
+
+<Note>
+  This operation is irreversible. The entire sheet will be permanently deleted.
+</Note>
+
+**Example:**
+
+```javascript
+users.drop(); // Deletes the entire "Users" sheet
+```
+
+### truncate()
+
+Remove all data rows but keep the header row.
+
+```javascript
+table.truncate()
+```
+
+**Example:**
+
+```javascript
+users.truncate(); // Keeps headers, removes all data
+```
+
+### ensureHeaders()
+
+Ensure headers exist, creating the sheet if missing or updating headers while preserving data.
+
+```javascript
+table.ensureHeaders(headers)
+```
+
+<ParamField path="headers" type="array" required>
+  Array of header names to ensure
+</ParamField>
+
+**Example:**
+
+```javascript
+// Safe operation - creates only if needed
+users.ensureHeaders(["id", "name", "email"]);
+```
+
+## Header Management
+
+### getHeaders()
+
+Retrieve current headers as an array of strings.
+
+```javascript
+const headers = table.getHeaders()
+```
+
+**Example:**
+
+```javascript
+const headers = users.getHeaders();
+Logger.log(headers); // ["id", "name", "email", "age"]
+```
+
+### setHeaders()
+
+Set new headers, optionally preserving or clearing existing data.
+
+```javascript
+table.setHeaders(headers, overwrite)
+```
+
+<ParamField path="headers" type="array" required>
+  New array of header names
+</ParamField>
+
+<ParamField path="overwrite" type="boolean" default={false}>
+  If true, clears all data. If false, preserves and remaps data to new headers
+</ParamField>
+
+**Example:**
+
+```javascript
+// Preserve data, remap to new headers
+users.setHeaders(["id", "full_name", "email_address", "age"]);
+
+// Clear all data and set new headers
+users.setHeaders(["new_id", "new_name"], true);
+```
+
+## Column Management
+
+### addColumn()
+
+Add a new column to the table.
+
+```javascript
+table.addColumn(name, index)
+```
+
+<ParamField path="name" type="string" required>
+  Name of the new column
+</ParamField>
+
+<ParamField path="index" type="number">
+  Position to insert the column. If null or out of range, appends to the end
+</ParamField>
+
+**Example:**
+
+```javascript
+// Add to the end
+users.addColumn("phone");
+
+// Add at specific position
+users.addColumn("country", 2);
+```
+
+### removeColumn()
+
+Remove a column by name.
+
+```javascript
+table.removeColumn(name)
+```
+
+<ParamField path="name" type="string" required>
+  Name of the column to remove
+</ParamField>
+
+**Example:**
+
+```javascript
+users.removeColumn("phone");
+```
+
+### renameColumn()
+
+Rename an existing column while preserving data.
+
+```javascript
+table.renameColumn(oldName, newName)
+```
+
+<ParamField path="oldName" type="string" required>
+  Current column name
+</ParamField>
+
+<ParamField path="newName" type="string" required>
+  New column name
+</ParamField>
+
+**Example:**
+
+```javascript
+users.renameColumn("name", "full_name");
+```
+
+## Primary Key
+
+### setPrimaryKey()
+
+Define the primary key column for the table.
+
+```javascript
+table.setPrimaryKey(name)
+```
+
+<ParamField path="name" type="string" required>
+  Name of the column to use as primary key
+</ParamField>
+
+<Note>
+  The default primary key is "id". Change this if your table uses a different identifier column.
+</Note>
+
+**Example:**
+
+```javascript
+users.setPrimaryKey("id"); // Default
+users.setPrimaryKey("uuid"); // Custom primary key
+
+// Now methods like findById use the "uuid" column
+const user = users.findById("abc-123-def");
+```
+
+## Configuration Properties
+
+### normalizeHeadersFlag
+
+When true, headers are trimmed of whitespace. Default: `true`
+
+```javascript
+table.normalizeHeadersFlag = true;
+```
+
+### lowercaseHeadersFlag
+
+When true, headers are converted to lowercase. Default: `false`
+
+```javascript
+table.lowercaseHeadersFlag = false;
+```
+
+## Complete Example
+
+```javascript
+function setupDatabase() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const users = db.table("Users");
+
+  // Create table structure
+  users.create(["id", "name", "email"]);
+
+  // Add new columns
+  users.addColumn("age");
+  users.addColumn("phone");
+  users.addColumn("country", 3); // Insert at position 3
+
+  // Rename columns
+  users.renameColumn("name", "full_name");
+
+  // Check structure
+  const headers = users.getHeaders();
+  Logger.log(headers);
+  // ["id", "full_name", "email", "country", "age", "phone"]
+
+  // Set primary key
+  users.setPrimaryKey("id");
+
+  // Remove unnecessary column
+  users.removeColumn("phone");
+}
+```
+
+## Migration Example
+
+```javascript
+function migrateTableStructure() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const oldTable = db.table("UsersOld");
+  const oldData = oldTable.get();
+
+  // Create new table with improved structure
+  const newTable = db.table("Users");
+  newTable.create(["id", "full_name", "email", "age", "status", "created_at"]);
+
+  // Migrate and transform data
+  oldData.forEach(oldRow => {
+    newTable.insert({
+      id: oldRow.id,
+      full_name: `${oldRow.first_name} ${oldRow.last_name}`,
+      email: oldRow.email.toLowerCase(),
+      age: parseInt(oldRow.age) || 0,
+      status: "active",
+      created_at: new Date().toISOString()
+    });
+  });
+
+  Logger.log(`Migrated ${oldData.length} records`);
+}
+```
+
+## Best Practices
+
+<Note>
+  **DO**: Define a clear structure from the start
+  
+  ```javascript
+  users.create(["id", "name", "email", "age", "status", "created_at"]);
+  ```
+</Note>
+
+<Note>
+  **DO**: Use `ensureHeaders()` for safe, idempotent operations
+  
+  ```javascript
+  users.ensureHeaders(["id", "name", "email"]);
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Avoid using `overwrite=true` unless absolutely necessary
+  
+  ```javascript
+  // ❌ Dangerous - loses all data
+  users.setHeaders(["new1", "new2"], true);
+  
+  // ✅ Better - preserve data
+  users.renameColumn("old1", "new1");
+  users.renameColumn("old2", "new2");
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Never call `drop()` without user confirmation
+  
+  ```javascript
+  const confirmed = Browser.msgBox(
+    "Delete table?", 
+    Browser.Buttons.YES_NO
+  );
+  if (confirmed === "yes") {
+    users.drop();
+  }
+  ```
+</Note>
+
+## Method Summary
+
+| Category | Methods |
+|----------|--------|
+| **Structure** | `create()`, `ensureHeaders()`, `drop()`, `truncate()` |
+| **Headers** | `getHeaders()`, `setHeaders()` |
+| **Columns** | `addColumn()`, `removeColumn()`, `renameColumn()` |
+| **Config** | `setPrimaryKey()`, `setDriver()` |
+| **Properties** | `normalizeHeadersFlag`, `lowercaseHeadersFlag` |

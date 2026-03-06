@@ -1,0 +1,337 @@
+---
+title: 'Query Scopes'
+description: 'Define reusable query filters with scopes to keep your code clean and maintainable'
+---
+
+**Query scopes** allow you to define reusable query filters in your models. They encapsulate common filtering logic and dramatically improve code readability.
+
+## Defining Scopes
+
+Scopes are defined as static methods in your model with the prefix `scope` followed by a PascalCase name:
+
+```javascript
+class User extends Model {
+  // Scope for active users
+  static scopeActive(query) {
+    return query.where("status", "active");
+  }
+
+  // Scope for recent users (last 30 days)
+  static scopeRecent(query) {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return query.where("created_at", ">=", thirtyDaysAgo.toISOString());
+  }
+
+  // Scope with parameters
+  static scopeRole(query, role) {
+    return query.where("role", role);
+  }
+
+  // Scope with default parameters
+  static scopePopular(query, minFollowers = 100) {
+    return query.where("followers", ">=", minFollowers);
+  }
+}
+
+User._table = "Users";
+User.use(db);
+```
+
+## Basic Usage
+
+### Applying a Single Scope
+
+```javascript
+// Get active users
+const activeUsers = User.scope("active").get();
+
+// Equivalent to:
+const activeUsers = User.query().where("status", "active").get();
+```
+
+### Combining Multiple Scopes
+
+```javascript
+// Active AND recent users
+const users = User.scope("active", "recent").get();
+
+// Chain scopes together
+const admins = User.scope("active").scope("role", "admin").get();
+```
+
+### Scopes with Parameters
+
+```javascript
+// Users with specific role
+const editors = User.scope("role", "editor").get();
+
+// Popular users (more than 500 followers)
+const influencers = User.scope("popular", 500).get();
+```
+
+## Combining with Query Builder
+
+Scopes integrate seamlessly with other QueryBuilder methods:
+
+```javascript
+// Scope + additional where clauses
+const users = User.scope("active")
+  .where("country", "ES")
+  .orderBy("created_at", "desc")
+  .limit(10)
+  .get();
+
+// Scope + eager loading
+const posts = Post.scope("published")
+  .with("author", "comments")
+  .get();
+
+// Scope + aggregations
+const count = User.scope("active", "recent").count();
+const avgAge = User.scope("active").avg("age");
+```
+
+## Practical Examples
+
+<Accordion title="Blog Post Model">
+
+```javascript
+class Post extends Model {
+  static scopePublished(query) {
+    return query.where("published", true)
+                .where("published_at", "<=", new Date().toISOString());
+  }
+
+  static scopeDraft(query) {
+    return query.where("published", false);
+  }
+
+  static scopeByAuthor(query, authorId) {
+    return query.where("author_id", authorId);
+  }
+
+  static scopeFeatured(query) {
+    return query.where("is_featured", true);
+  }
+
+  static scopeCategory(query, category) {
+    return query.where("category", category);
+  }
+}
+
+Post._table = "Posts";
+Post.use(db);
+
+// Usage:
+const publishedPosts = Post.scope("published").get();
+const myDrafts = Post.scope("draft").scope("byAuthor", currentUserId).get();
+const featuredTech = Post.scope("published", "featured")
+                         .scope("category", "technology")
+                         .get();
+```
+
+</Accordion>
+
+<Accordion title="Product Model">
+
+```javascript
+class Product extends Model {
+  static scopeAvailable(query) {
+    return query.where("stock", ">", 0)
+                .where("active", true);
+  }
+
+  static scopeOnSale(query) {
+    return query.where("discount", ">", 0);
+  }
+
+  static scopePriceRange(query, min, max) {
+    return query.where("price", ">=", min)
+                .where("price", "<=", max);
+  }
+
+  static scopeBrand(query, brand) {
+    return query.where("brand", brand);
+  }
+}
+
+Product._table = "Products";
+Product.use(db);
+
+// Usage:
+const availableProducts = Product.scope("available").get();
+const deals = Product.scope("available", "onSale").get();
+const affordableNike = Product.scope("available")
+                              .scope("priceRange", 0, 100)
+                              .scope("brand", "Nike")
+                              .get();
+```
+
+</Accordion>
+
+## Advanced Scope Patterns
+
+### Scopes with Multiple Conditions
+
+```javascript
+static scopeEligibleForPromotion(query) {
+  return query.where("age", ">=", 18)
+              .where("verified", true)
+              .where("banned", false)
+              .where("orders_count", ">", 0);
+}
+```
+
+### Scopes with OR Conditions
+
+```javascript
+static scopeHighPriority(query) {
+  return query.where("priority", "high")
+              .orWhere("urgent", true)
+              .orWhere("vip_customer", true);
+}
+```
+
+### Conditional Scopes
+
+```javascript
+static scopeFilterByStatus(query, status = null) {
+  if (status) {
+    return query.where("status", status);
+  }
+  return query;
+}
+
+// Usage:
+const users = User.scope("filterByStatus", userStatus).get();
+```
+
+## Implementation Details
+
+From `Model.js:169-182`, scopes are implemented using the `_applyScope` method:
+
+```javascript
+static scope(name, ...args) {
+  const qb = this.query();
+  return this._applyScope(qb, name, ...args);
+}
+
+static _applyScope(qb, name, ...args) {
+  const method = "scope" + name.charAt(0).toUpperCase() + name.slice(1);
+  
+  if (typeof this[method] !== "function") {
+    throw new Error(`Scope "${name}" no existe en ${this.name}`);
+  }
+  
+  return this[method](qb, ...args) || qb;
+}
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use descriptive names">
+  Make scope names clear and self-documenting:
+  
+  ```javascript
+  static scopeActive(query) {
+    return query.where("status", "active");
+  }
+  ```
+</Step>
+
+<Step title="Keep scopes simple and composable">
+  Create small, focused scopes that can be combined:
+  
+  ```javascript
+  // Good: Combine simple scopes
+  const users = User.scope("active", "verified", "recent").get();
+  
+  // Avoid: Overly specific scopes
+  // static scopeActiveUserWithEmailJohnInSpain(query) { ... }
+  ```
+</Step>
+
+<Step title="Always return the query">
+  Make sure your scope returns the query builder:
+  
+  ```javascript
+  // ✅ Good
+  static scopeActive(query) {
+    return query.where("status", "active");
+  }
+  
+  // ❌ Bad - missing return
+  static scopeActive(query) {
+    query.where("status", "active");
+  }
+  ```
+</Step>
+
+<Step title="Use default parameters for flexibility">
+  ```javascript
+  static scopePopular(query, threshold = 100) {
+    return query.where("views", ">=", threshold);
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Benefits of Scopes
+
+<Note>
+  **Scopes provide several key advantages:**
+  
+  - **Reusability**: Define once, use everywhere
+  - **Readability**: `User.scope("active", "verified")` vs multiple `where()` calls
+  - **Maintainability**: Change logic in one place
+  - **Composability**: Combine scopes for complex queries
+  - **Testability**: Easy to test scopes in isolation
+</Note>
+
+## Testing Scopes
+
+```javascript
+// Test basic scope
+function testActiveScope() {
+  const users = User.scope("active").get();
+  Logger.log(users.every(u => u.status === "active")); // true
+}
+
+// Test scope with parameters
+function testRoleScope() {
+  const admins = User.scope("role", "admin").get();
+  Logger.log(admins.every(u => u.role === "admin")); // true
+}
+
+// Test combined scopes
+function testCombinedScopes() {
+  const count = User.scope("active", "recent").count();
+  Logger.log(`Active recent users: ${count}`);
+}
+```
+
+## Common Pitfalls
+
+<Warning>
+  **Avoid these common mistakes:**
+  
+  - **Don't forget to return**: Always return the query from your scope
+  - **Don't make scopes too specific**: Keep them general and composable
+  - **Don't execute queries inside scopes**: Scopes should only build queries, not execute them
+</Warning>
+
+## Summary
+
+| Usage | Example |
+|-------|----------|
+| Apply single scope | `User.scope("active")` |
+| Apply multiple scopes | `User.scope("active", "verified")` |
+| Scope with parameters | `User.scope("role", "admin")` |
+| Chain scopes | `User.scope("active").scope("recent")` |
+| Combine with query builder | `User.scope("active").where("country", "ES")` |
+
+Scopes are a powerful tool for keeping your code clean and maintainable. Use them whenever you have repetitive query logic!

@@ -1,97 +1,151 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "ServiceSQL Documentation"
+description: "Eloquent-inspired ORM for Google Apps Script that transforms Google Sheets into a relational database"
 ---
 
-## Setting up
+# Transform Google Sheets into a Powerful Database
 
-Get your documentation site up and running in minutes.
+ServiceSQL is an Eloquent-inspired ORM library for Google Apps Script that brings Laravel-style Models, QueryBuilder, Collections, and Relationships to Google Sheets.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get started with ServiceSQL in under 5 minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Install ServiceSQL as a Google Apps Script library
+  </Card>
+  <Card
+    title="Models"
+    icon="cube"
+    href="/core/models"
+  >
+    Define Eloquent-style Models with timestamps and casts
+  </Card>
+  <Card
+    title="Query Builder"
+    icon="search"
+    href="/core/query-builder"
+  >
+    Build complex queries with a fluent API
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<CardGroup cols={3}>
+  <Card title="Eloquent Models" icon="cube">
+    Define Models with automatic timestamps, soft deletes, and type casting
+  </Card>
+  <Card title="Fluent QueryBuilder" icon="code">
+    Build queries with WHERE, JOIN, GROUP BY, and aggregations
+  </Card>
+  <Card title="Relationships" icon="link">
+    Connect Models with BelongsTo, HasMany, HasOne, and ManyToMany
+  </Card>
+  <Card title="Collections" icon="layer-group">
+    Transform data with 50+ Laravel-inspired collection methods
+  </Card>
+  <Card title="Eager Loading" icon="bolt">
+    Prevent N+1 queries with automatic eager loading
+  </Card>
+  <Card title="Type Casting" icon="wand-magic-sparkles">
+    Automatically cast values to int, bool, json, date, and more
+  </Card>
+</CardGroup>
+
+## Quick Example
+
+Here's how easy it is to work with ServiceSQL:
+
+```javascript
+// Initialize ServiceSQL
+const db = APPSQL.init({
+  spreadsheetId: "YOUR_SPREADSHEET_ID"
+});
+
+// Define a Model
+class User extends Model {}
+User._table = "Users";
+User._timestamps = true;
+User._fillable = ["name", "email", "age"];
+User._casts = { age: "int", verified: "bool" };
+User.use(db);
+
+// Create a user
+const user = User.create({
+  name: "John Doe",
+  email: "john@example.com",
+  age: 30
+});
+
+// Query users
+const activeUsers = User.where("status", "active")
+  .where("age", ">=", 18)
+  .orderBy("name")
+  .get();
+
+// Work with relationships
+class Post extends Model {}
+Post._table = "Posts";
+Post.author = function() {
+  return this.belongsTo(User, "user_id");
+};
+Post.use(db);
+
+// Eager load relationships
+const posts = Post.with("author").get();
+posts.each(post => {
+  Logger.log(`${post.title} by ${post.author.name}`);
+});
+```
+
+## Why ServiceSQL?
+
+<CardGroup cols={2}>
+  <Card title="Familiar API" icon="heart">
+    If you know Laravel Eloquent, you already know ServiceSQL
+  </Card>
+  <Card title="No External Dependencies" icon="feather">
+    Pure JavaScript for Google Apps Script
+  </Card>
+  <Card title="Production Ready" icon="shield-check">
+    Battle-tested features with comprehensive documentation
+  </Card>
+  <Card title="Developer Experience" icon="sparkles">
+    Clean, fluent API that makes your code readable and maintainable
+  </Card>
+</CardGroup>
+
+## Get Started
+
+<Steps>
+  <Step title="Install the Library">
+    Add ServiceSQL to your Google Apps Script project as a library
+  </Step>
+  <Step title="Initialize">
+    Configure ServiceSQL with your spreadsheet ID
+  </Step>
+  <Step title="Create Models">
+    Define your data models and relationships
+  </Step>
+  <Step title="Build Queries">
+    Query your data with the fluent QueryBuilder
+  </Step>
+</Steps>
 
 <Card
-  title="Start here"
-  icon="rocket"
+  title="Ready to get started?"
+  icon="arrow-right"
   href="/quickstart"
   horizontal
 >
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
+  Follow our quickstart guide to build your first ServiceSQL application
 </Card>

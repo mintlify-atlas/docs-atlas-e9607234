@@ -1,0 +1,521 @@
+---
+title: 'Casts & Mutators'
+description: 'Automatically transform data with type casting, accessors, and mutators'
+---
+
+**Casts** and **mutators** allow you to automatically transform data as it moves between your application and the database. Casts handle type conversions, while accessors and mutators let you customize how attributes are read and written.
+
+## Type Casts
+
+Casts automatically convert data types when reading from or writing to the database. Define them in the `_casts` property:
+
+```javascript
+class User extends Model {
+  // Define type conversions
+}
+
+User._table = "Users";
+User._casts = {
+  age: "int",
+  verified: "bool",
+  metadata: "json",
+  settings: "array",
+  birthdate: "date",
+  created_at: "datetime",
+  score: "float"
+};
+
+User.use(db);
+```
+
+### Reading Data with Casts
+
+```javascript
+const user = User.find(1);
+
+Logger.log(typeof user.age);        // "number"
+Logger.log(typeof user.verified);   // "boolean"
+Logger.log(typeof user.metadata);   // "object"
+Logger.log(user.birthdate);         // Date object
+```
+
+### Writing Data with Casts
+
+```javascript
+user.metadata = { theme: "dark", lang: "es" };
+user.save();
+// Saved to sheet as JSON string: '{"theme":"dark","lang":"es"}'
+
+user.verified = true;
+user.save();
+// Saved to sheet as boolean: true
+```
+
+## Available Cast Types
+
+From `Model.js:57-107`, ServiceSQL supports these cast types:
+
+| Cast Type | Description | Input Example | Output Example |
+|-----------|-------------|---------------|----------------|
+| `int`, `integer` | Integer number | `"25"` | `25` |
+| `float`, `double` | Decimal number | `"3.14"` | `3.14` |
+| `bool`, `boolean` | Boolean | `"true"`, `1` | `true` |
+| `string` | String | `123` | `"123"` |
+| `json` | JSON object | `'{"a":1}'` | `{a:1}` |
+| `array` | Array | `'[1,2,3]'` | `[1,2,3]` |
+| `date`, `datetime` | Date object | `"2025-01-15"` | `Date` object |
+| `dmy` | dd/mm/yyyy format | `Date` | `"15/01/2025"` |
+| `dmyhms` | Full date+time | `Date` | `"15/01/2025 10:30:00"` |
+
+### Cast Implementation
+
+The casting logic from `Model.js:57-107`:
+
+```javascript
+static _castValue(value, type) {
+  if (value === null || value === undefined) return value;
+  
+  switch (type) {
+    case "int":
+      return Number(value);
+    
+    case "integer":
+      return Number.parseInt(value) || 0;
+    
+    case "float":
+    case "double":
+      return Number.parseFloat(value) || 0;
+    
+    case "bool":
+    case "boolean":
+      return (
+        value === true || value === "true" || value === 1 || value === "1"
+      );
+    
+    case "json":
+      try {
+        return typeof value === "string" ? JSON.parse(value) : value;
+      } catch (e) {
+        return value;
+      }
+    
+    case "array":
+      try {
+        return Array.isArray(value) ? value : JSON.parse(value);
+      } catch (e) {
+        return value;
+      }
+    
+    case "date":
+    case "datetime":
+      return new Date(value);
+    
+    case "dmy":
+      const d = new Date(value);
+      return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
+    
+    case "dmyhms":
+      const dt = new Date(value);
+      return `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()} ${dt.getHours()}:${dt.getMinutes()}:${dt.getSeconds()}`;
+    
+    default:
+      return value;
+  }
+}
+```
+
+## Practical Cast Examples
+
+### User Model with Multiple Casts
+
+```javascript
+class User extends Model {}
+
+User._table = "Users";
+User._casts = {
+  age: "int",
+  admin: "bool",
+  balance: "float",
+  preferences: "json",
+  tags: "array",
+  created_at: "datetime"
+};
+
+User.use(db);
+
+// Create user
+const user = User.create({
+  name: "John",
+  age: "30",              // String → Number
+  admin: "true",          // String → Boolean
+  balance: "99.99",       // String → Float
+  preferences: { theme: "dark" },  // Object → JSON string in DB
+  tags: ["developer", "admin"]     // Array → JSON string in DB
+});
+
+Logger.log(typeof user.age);            // "number"
+Logger.log(typeof user.admin);          // "boolean"
+Logger.log(typeof user.balance);        // "number"
+Logger.log(typeof user.preferences);    // "object"
+Logger.log(Array.isArray(user.tags));   // true
+```
+
+### Settings with JSON Cast
+
+```javascript
+class AppSettings extends Model {}
+
+AppSettings._table = "Settings";
+AppSettings._casts = {
+  config: "json"
+};
+
+AppSettings.use(db);
+
+// Create settings
+const settings = AppSettings.create({
+  name: "app_config",
+  config: {
+    theme: "light",
+    notifications: true,
+    features: ["chat", "video"]
+  }
+});
+
+// Read settings
+const loaded = AppSettings.find(settings.id);
+Logger.log(loaded.config.theme);           // "light"
+Logger.log(loaded.config.features[0]);     // "chat"
+```
+
+## Accessors (Getters)
+
+**Accessors** transform attributes when reading them. Define them as methods with the pattern `getXxxAttribute`:
+
+```javascript
+class User extends Model {
+  // Combine first and last name
+  getFullNameAttribute(value) {
+    return `${this.first_name} ${this.last_name}`;
+  }
+
+  // Normalize email to lowercase
+  getEmailAttribute(value) {
+    return value.toLowerCase();
+  }
+
+  // Format age with text
+  getAgeInYearsAttribute(value) {
+    return `${this.age} years old`;
+  }
+}
+
+User._table = "Users";
+User.use(db);
+
+const user = User.find(1);
+Logger.log(user.full_name);      // "John Doe"
+Logger.log(user.email);          // "john@example.com" (lowercase)
+Logger.log(user.age_in_years);   // "30 years old"
+```
+
+### Accessor Implementation
+
+From `Model.js:43-52`, accessors are applied during model hydration:
+
+```javascript
+// apply accessors
+for (const k in cleaned) {
+  const method =
+    "get" + k.charAt(0).toUpperCase() + k.slice(1) + "Attribute";
+
+  if (typeof inst[method] === "function") {
+    try {
+      inst[k] = inst[method](inst[k]);
+    } catch (e) {}
+  }
+}
+```
+
+### Accessor Examples
+
+<Accordion title="Formatting Dates">
+
+```javascript
+class Post extends Model {
+  getPublishedDateAttribute(value) {
+    const date = new Date(this.published_at);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+  }
+}
+
+Post._table = "Posts";
+Post.use(db);
+
+const post = Post.first();
+Logger.log(post.published_date); // "January 15, 2025"
+```
+
+</Accordion>
+
+<Accordion title="Computing Values">
+
+```javascript
+class Product extends Model {
+  getFinalPriceAttribute(value) {
+    return this.price - (this.price * this.discount / 100);
+  }
+
+  getIsOnSaleAttribute(value) {
+    return this.discount > 0;
+  }
+}
+
+Product._table = "Products";
+Product.use(db);
+
+const product = Product.first();
+Logger.log(product.final_price);  // 89.99 (computed from price and discount)
+Logger.log(product.is_on_sale);   // true
+```
+
+</Accordion>
+
+## Mutators (Setters)
+
+**Mutators** transform attributes when writing them. Define them as methods with the pattern `setXxxAttribute`:
+
+```javascript
+class User extends Model {
+  // Trim and uppercase names
+  setNameAttribute(value) {
+    return value.trim().toUpperCase();
+  }
+
+  // Normalize email
+  setEmailAttribute(value) {
+    return value.toLowerCase().trim();
+  }
+
+  // Hash password before saving
+  setPasswordAttribute(value) {
+    return hashPassword(value);
+  }
+}
+
+User._table = "Users";
+User.use(db);
+
+const user = new User();
+user.name = "  john doe  ";
+user.email = " JOHN@EXAMPLE.COM ";
+user.save();
+
+// Saved to database:
+// name: "JOHN DOE"
+// email: "john@example.com"
+```
+
+### Mutator Implementation
+
+From `Model.js:365-387`, mutators are applied before saving:
+
+```javascript
+static _prepareForSave(data) {
+  const ModelClass = this;
+  const out = Object.assign({}, data);
+  
+  for (const key in out) {
+    // Apply mutator
+    const method =
+      "set" + key.charAt(0).toUpperCase() + key.slice(1) + "Attribute";
+    if (typeof ModelClass.prototype[method] === "function") {
+      try {
+        out[key] = ModelClass.prototype[method](out[key]);
+      } catch (e) { /* ignore */ }
+    }
+    
+    // Apply cast for saving
+    const cast = ModelClass._casts && ModelClass._casts[key];
+    if (cast) {
+      if (cast === "json" || cast === "array")
+        out[key] = JSON.stringify(out[key]);
+      else if (cast === "date" || cast === "datetime")
+        out[key] = new Date(out[key]).toISOString();
+    }
+  }
+  
+  return out;
+}
+```
+
+### Mutator Examples
+
+<Accordion title="Data Sanitization">
+
+```javascript
+class User extends Model {
+  setPhoneAttribute(value) {
+    // Remove all non-digit characters
+    return value.replace(/\D/g, '');
+  }
+
+  setUsernameAttribute(value) {
+    // Lowercase and remove spaces
+    return value.toLowerCase().replace(/\s/g, '');
+  }
+}
+
+User._table = "Users";
+User.use(db);
+
+const user = User.create({
+  phone: "(555) 123-4567",    // Saved as: "5551234567"
+  username: "John Doe"        // Saved as: "johndoe"
+});
+```
+
+</Accordion>
+
+<Accordion title="Data Encryption">
+
+```javascript
+class User extends Model {
+  setPasswordAttribute(value) {
+    // Hash password with bcrypt
+    return bcrypt.hashSync(value, 10);
+  }
+
+  setSsnAttribute(value) {
+    // Encrypt sensitive data
+    return encrypt(value, SECRET_KEY);
+  }
+}
+
+User._table = "Users";
+User.use(db);
+
+const user = User.create({
+  password: "mypassword123"    // Saved as hashed value
+});
+```
+
+</Accordion>
+
+## Combining Casts, Accessors, and Mutators
+
+You can use all three together for powerful data transformation:
+
+```javascript
+class Product extends Model {
+  // Mutator: normalize price before saving
+  setPriceAttribute(value) {
+    return parseFloat(value).toFixed(2);
+  }
+
+  // Accessor: format price for display
+  getPriceFormattedAttribute(value) {
+    return `$${this.price}`;
+  }
+}
+
+Product._table = "Products";
+Product._casts = {
+  price: "float",
+  stock: "int",
+  active: "bool",
+  metadata: "json"
+};
+
+Product.use(db);
+
+const product = Product.create({
+  name: "Widget",
+  price: "19.99999"    // Mutator → "19.99", Cast → 19.99
+});
+
+Logger.log(product.price);            // 19.99 (float)
+Logger.log(product.price_formatted);  // "$19.99" (accessor)
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use casts for type safety">
+  Define casts for all fields that need type conversion:
+  
+  ```javascript
+  User._casts = {
+    age: "int",
+    verified: "bool",
+    settings: "json"
+  };
+  ```
+</Step>
+
+<Step title="Use mutators for data normalization">
+  Ensure data is clean before saving:
+  
+  ```javascript
+  setEmailAttribute(value) {
+    return value.toLowerCase().trim();
+  }
+  ```
+</Step>
+
+<Step title="Use accessors for computed properties">
+  Calculate derived values without storing them:
+  
+  ```javascript
+  getFullNameAttribute(value) {
+    return `${this.first_name} ${this.last_name}`;
+  }
+  ```
+</Step>
+
+<Step title="Don't mutate original data unnecessarily">
+  Only use mutators when you need to transform data for storage:
+  
+  ```javascript
+  // ✅ Good: transform for storage
+  setPasswordAttribute(value) {
+    return hashPassword(value);
+  }
+  
+  // ❌ Bad: side effects
+  setNameAttribute(value) {
+    sendNotification(`Name changed to ${value}`);
+    return value;
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Common Pitfalls
+
+<Warning>
+  **Avoid these mistakes:**
+  
+  - **Circular dependencies**: Don't reference other accessors within an accessor
+  - **Performance issues**: Accessors run every time you access a property, so avoid expensive operations
+  - **Mutator side effects**: Mutators should only transform data, not trigger other actions
+  - **Cast conflicts**: Don't define both a cast and mutator for the same field unless necessary
+</Warning>
+
+## Summary
+
+| Feature | Purpose | Pattern | Example |
+|---------|---------|---------|----------|
+| **Casts** | Type conversion | `_casts` object | `age: "int"` |
+| **Accessors** | Transform on read | `getXxxAttribute()` | `getFullNameAttribute()` |
+| **Mutators** | Transform on write | `setXxxAttribute()` | `setEmailAttribute()` |
+
+<Tip>
+  Casts, accessors, and mutators make your models self-documenting and ensure data consistency throughout your application. Use them to keep your business logic centralized in your models.
+</Tip>

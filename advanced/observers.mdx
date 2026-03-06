@@ -1,0 +1,647 @@
+---
+title: 'Model Observers'
+description: 'Hook into model lifecycle events to trigger custom logic'
+---
+
+**Model observers** allow you to execute code at specific points in a model's lifecycle. Use them for logging, sending notifications, validating data, or triggering side effects when models are created, updated, or deleted.
+
+## Available Events
+
+| Event | Fired | Use Cases |
+|-------|-------|----------|
+| `creating` | Before creating a record | Validation, setting defaults |
+| `created` | After creating a record | Notifications, logging, cache |
+| `updating` | Before updating a record | Validation, change detection |
+| `updated` | After updating a record | Cache invalidation, notifications |
+| `deleting` | Before deleting a record | Validation, dependency checks |
+| `deleted` | After deleting a record | Cleanup, logging, cascade deletes |
+
+## Registering Observers
+
+### Class-Based Observer
+
+Create an observer class with methods for each event:
+
+```javascript
+class UserObserver {
+  creating(user) {
+    Logger.log(`Creating user: ${user.name}`);
+    // Validation, set defaults
+  }
+
+  created(user) {
+    Logger.log(`User created: ${user.id}`);
+    // Send welcome email
+    sendWelcomeEmail(user.email);
+  }
+
+  updating(user) {
+    Logger.log(`Updating user: ${user.id}`);
+    // Check permissions
+  }
+
+  updated(user) {
+    Logger.log(`User updated: ${user.id}`);
+    // Clear cache
+    clearUserCache(user.id);
+  }
+
+  deleting(user) {
+    Logger.log(`Deleting user: ${user.id}`);
+    // Validate no dependencies
+    if (user.orders_count > 0) {
+      throw new Error("Cannot delete user with orders");
+    }
+  }
+
+  deleted(user) {
+    Logger.log(`User deleted: ${user.id}`);
+    // Delete associated files
+    deleteUserFiles(user.id);
+  }
+}
+
+// Register the observer
+User.observe(new UserObserver());
+```
+
+### Function-Based Observer
+
+Use a single function that receives the event name:
+
+```javascript
+User.observe((event, user) => {
+  Logger.log(`Event: ${event}, User: ${user.id}`);
+
+  switch(event) {
+    case "created":
+      sendWelcomeEmail(user.email);
+      break;
+    
+    case "updated":
+      clearUserCache(user.id);
+      break;
+    
+    case "deleted":
+      logAudit("delete", user);
+      break;
+  }
+});
+```
+
+### Object-Based Observer
+
+Register specific event handlers as an object:
+
+```javascript
+User.observe({
+  created(user) {
+    Logger.log(`Welcome ${user.name}!`);
+    sendWelcomeEmail(user.email);
+  },
+
+  updated(user) {
+    Logger.log(`User ${user.id} updated`);
+    clearUserCache(user.id);
+  },
+
+  deleted(user) {
+    Logger.log(`Goodbye ${user.name}`);
+    archiveUserData(user);
+  }
+});
+```
+
+## Implementation Details
+
+From `Model.js:185-210`, the observer system:
+
+```javascript
+static observe(obs) {
+  if (!Object.prototype.hasOwnProperty.call(this, "_observers")) {
+    this._observers = [];
+  }
+  this._observers.push(obs);
+}
+
+static _fireEvent(eventName, instance) {
+  for (const obs of this._observers || []) {
+    if (!obs) continue;
+    
+    // Function-based observer
+    if (typeof obs === "function") {
+      try {
+        obs(eventName, instance);
+      } catch (e) {
+        /* ignore observer errors */
+      }
+      continue;
+    }
+    
+    // Class/Object-based observer
+    if (typeof obs[eventName] === "function") {
+      try {
+        obs[eventName](instance);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+}
+```
+
+Events are fired from:
+- `create()` - fires `creating` before, `created` after
+- `save()` - fires `creating`/`created` or `updating`/`updated`
+- `delete()` - fires `deleting` before, `deleted` after
+
+## Practical Examples
+
+### Email Notifications
+
+```javascript
+class PostObserver {
+  created(post) {
+    // Notify author
+    const author = User.find(post.user_id);
+    sendEmail(author.email, "Post Created", `Your post "${post.title}" was published`);
+    
+    // Notify subscribers
+    const subscribers = Subscription.where("user_id", author.id).get();
+    subscribers.each(sub => {
+      sendEmail(sub.email, "New Post", `${author.name} published: ${post.title}`);
+    });
+  }
+
+  updated(post) {
+    // Notify about major changes
+    if (post.title !== post._originalTitle) {
+      Logger.log(`Post title changed: ${post._originalTitle} → ${post.title}`);
+    }
+  }
+}
+
+Post.observe(new PostObserver());
+```
+
+### Audit Logging
+
+```javascript
+class AuditObserver {
+  created(model) {
+    AuditLog.create({
+      action: "create",
+      model_type: model.constructor.name,
+      model_id: model.id,
+      user_id: getCurrentUserId(),
+      changes: JSON.stringify(model)
+    });
+  }
+
+  updated(model) {
+    AuditLog.create({
+      action: "update",
+      model_type: model.constructor.name,
+      model_id: model.id,
+      user_id: getCurrentUserId(),
+      changes: JSON.stringify(model)
+    });
+  }
+
+  deleted(model) {
+    AuditLog.create({
+      action: "delete",
+      model_type: model.constructor.name,
+      model_id: model.id,
+      user_id: getCurrentUserId(),
+      data: JSON.stringify(model)
+    });
+  }
+}
+
+// Apply to all models
+User.observe(new AuditObserver());
+Post.observe(new AuditObserver());
+Comment.observe(new AuditObserver());
+```
+
+### Cache Management
+
+```javascript
+class CacheObserver {
+  created(model) {
+    this.invalidateCache(model);
+  }
+
+  updated(model) {
+    this.invalidateCache(model);
+  }
+
+  deleted(model) {
+    this.invalidateCache(model);
+  }
+
+  invalidateCache(model) {
+    const cacheKey = `${model.constructor.name}:${model.id}`;
+    CacheService.getScriptCache().remove(cacheKey);
+    
+    // Also invalidate list caches
+    const listKey = `${model.constructor.name}:all`;
+    CacheService.getScriptCache().remove(listKey);
+    
+    Logger.log(`Cache invalidated: ${cacheKey}`);
+  }
+}
+
+Post.observe(new CacheObserver());
+```
+
+### Cascading Operations
+
+```javascript
+class UserObserver {
+  deleted(user) {
+    Logger.log(`Cascading delete for user ${user.id}`);
+    
+    // Delete user's posts
+    Post.where("user_id", user.id).query().delete();
+    
+    // Delete user's comments
+    Comment.where("user_id", user.id).query().delete();
+    
+    // Delete user's profile
+    const profile = Profile.where("user_id", user.id).first();
+    if (profile) profile.delete();
+    
+    Logger.log(`Cascading delete complete for user ${user.id}`);
+  }
+}
+
+User.observe(new UserObserver());
+```
+
+## Using Boot for Global Observers
+
+Register observers in the `boot()` method for automatic setup:
+
+```javascript
+class User extends Model {
+  static boot() {
+    // Register observers during model initialization
+    this.observe({
+      created(user) {
+        Logger.log(`[User] created: ${user.id}`);
+        sendWelcomeEmail(user.email);
+      },
+      
+      updated(user) {
+        Logger.log(`[User] updated: ${user.id}`);
+      },
+      
+      deleted(user) {
+        Logger.log(`[User] deleted: ${user.id}`);
+      }
+    });
+  }
+}
+
+User._table = "Users";
+User._timestamps = true;
+
+const db = APPSQL.init({ spreadsheetId: "ID" });
+User.use(db); // boot() is called automatically, observers registered
+```
+
+## Validation with Observers
+
+```javascript
+class PostObserver {
+  creating(post) {
+    // Validate before creation
+    if (!post.title || post.title.length < 5) {
+      throw new Error("Title must be at least 5 characters");
+    }
+    
+    if (!post.body || post.body.length < 20) {
+      throw new Error("Body must be at least 20 characters");
+    }
+    
+    // Auto-generate slug
+    if (!post.slug) {
+      post.slug = post.title.toLowerCase().replace(/\s+/g, "-");
+    }
+  }
+
+  updating(post) {
+    // Prevent changing published posts
+    const original = Post.find(post.id);
+    if (original.published && !post.published) {
+      throw new Error("Cannot unpublish a published post");
+    }
+  }
+}
+
+Post.observe(new PostObserver());
+
+// Usage
+try {
+  Post.create({
+    title: "Hi",  // Too short!
+    body: "Test"
+  });
+} catch (e) {
+  Logger.log(e.message); // "Title must be at least 5 characters"
+}
+```
+
+## Setting Default Values
+
+```javascript
+class UserObserver {
+  creating(user) {
+    // Set default values
+    if (!user.role) {
+      user.role = "user";
+    }
+    
+    if (!user.status) {
+      user.status = "active";
+    }
+    
+    // Generate verification token
+    if (!user.verification_token) {
+      user.verification_token = generateToken();
+    }
+    
+    // Set registration IP
+    user.registration_ip = getCurrentIP();
+  }
+}
+
+User.observe(new UserObserver());
+
+const user = User.create({
+  name: "John",
+  email: "john@example.com"
+});
+
+Logger.log(user.role);                // "user" (default)
+Logger.log(user.status);              // "active" (default)
+Logger.log(user.verification_token);  // Generated token
+```
+
+## Multiple Observers
+
+You can register multiple observers on the same model:
+
+```javascript
+// Email observer
+Post.observe({
+  created(post) {
+    sendNotifications(post);
+  }
+});
+
+// Cache observer
+Post.observe({
+  created(post) {
+    invalidateCache(post);
+  },
+  updated(post) {
+    invalidateCache(post);
+  }
+});
+
+// Audit observer
+Post.observe({
+  created(post) {
+    logAudit("create", post);
+  },
+  updated(post) {
+    logAudit("update", post);
+  },
+  deleted(post) {
+    logAudit("delete", post);
+  }
+});
+
+// All observers will be called in order
+```
+
+## Error Handling
+
+Observer errors are silently caught to prevent breaking the main operation:
+
+```javascript
+User.observe({
+  created(user) {
+    // If this fails, user creation still succeeds
+    try {
+      sendWelcomeEmail(user.email);
+    } catch (e) {
+      Logger.log(`Failed to send welcome email: ${e.message}`);
+      // Log error but don't throw
+    }
+  }
+});
+```
+
+From `Model.js:191-210`, errors are caught internally:
+
+```javascript
+static _fireEvent(eventName, instance) {
+  for (const obs of this._observers || []) {
+    if (!obs) continue;
+    if (typeof obs === "function") {
+      try {
+        obs(eventName, instance);
+      } catch (e) {
+        /* ignore observer errors */
+      }
+      continue;
+    }
+    if (typeof obs[eventName] === "function") {
+      try {
+        obs[eventName](instance);
+      } catch (e) {
+        /* ignore */
+      }
+    }
+  }
+}
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Register observers in boot()">
+  Keep observer registration in one place:
+  
+  ```javascript
+  static boot() {
+    this.observe(new UserObserver());
+  }
+  ```
+</Step>
+
+<Step title="Keep observers focused">
+  Create separate observer classes for different concerns:
+  
+  ```javascript
+  User.observe(new EmailObserver());
+  User.observe(new CacheObserver());
+  User.observe(new AuditObserver());
+  ```
+</Step>
+
+<Step title="Use 'creating' for validation and defaults">
+  Validate and set defaults before saving:
+  
+  ```javascript
+  creating(user) {
+    if (!user.email) throw new Error("Email required");
+    if (!user.role) user.role = "user";
+  }
+  ```
+</Step>
+
+<Step title="Handle errors gracefully">
+  Don't let observer failures break main operations:
+  
+  ```javascript
+  created(user) {
+    try {
+      sendWelcomeEmail(user.email);
+    } catch (e) {
+      Logger.log(`Email failed: ${e.message}`);
+    }
+  }
+  ```
+</Step>
+
+<Step title="Avoid expensive operations in observers">
+  Keep observers fast and lightweight. For heavy tasks, queue them for later:
+  
+  ```javascript
+  created(user) {
+    // Good: Quick notification
+    sendEmail(user.email, "Welcome!");
+    
+    // Bad: Expensive operation
+    // generateUserReport(user.id); // Too slow!
+    
+    // Better: Queue it
+    JobQueue.add("generateReport", { userId: user.id });
+  }
+  ```
+</Step>
+
+</Steps>
+
+## Common Pitfalls
+
+<Warning>
+  **Avoid these mistakes:**
+  
+  - **Infinite loops**: Don't modify and save the same model in its own observer
+  - **Tight coupling**: Observers should not depend on external state
+  - **Performance issues**: Avoid expensive operations in observers
+  - **Throwing errors**: Observer errors are silently caught, so validate in `creating`/`updating` instead
+</Warning>
+
+### Example: Avoiding Infinite Loops
+
+```javascript
+// ❌ Bad: Infinite loop
+Post.observe({
+  updated(post) {
+    post.view_count++;
+    post.save(); // This triggers 'updated' again!
+  }
+});
+
+// ✅ Good: Use direct database update
+Post.observe({
+  updated(post) {
+    Post.query().updateById(post.id, { view_count: post.view_count + 1 });
+    // Or flag to prevent recursion
+  }
+});
+```
+
+## Real-World Example: Blog System
+
+```javascript
+class PostObserver {
+  creating(post) {
+    // Validation
+    if (!post.title) throw new Error("Title required");
+    if (!post.user_id) throw new Error("Author required");
+    
+    // Set defaults
+    if (!post.slug) {
+      post.slug = post.title.toLowerCase().replace(/\s+/g, "-");
+    }
+    if (post.published === undefined) {
+      post.published = false;
+    }
+  }
+
+  created(post) {
+    // Send notification
+    const author = User.find(post.user_id);
+    Logger.log(`New post created: "${post.title}" by ${author.name}`);
+    
+    // Clear cache
+    CacheService.getScriptCache().remove("posts:recent");
+    
+    // If published, notify subscribers
+    if (post.published) {
+      notifySubscribers(author, post);
+    }
+  }
+
+  updated(post) {
+    // Clear cache
+    CacheService.getScriptCache().remove(`post:${post.id}`);
+    CacheService.getScriptCache().remove("posts:recent");
+    
+    // Log changes
+    Logger.log(`Post ${post.id} updated`);
+  }
+
+  deleting(post) {
+    // Check dependencies
+    const commentCount = Comment.where("post_id", post.id).count();
+    if (commentCount > 0) {
+      Logger.log(`Warning: Deleting post with ${commentCount} comments`);
+    }
+  }
+
+  deleted(post) {
+    // Delete comments
+    Comment.where("post_id", post.id).query().delete();
+    
+    // Clear cache
+    CacheService.getScriptCache().remove(`post:${post.id}`);
+    
+    // Log
+    Logger.log(`Post ${post.id} and its comments deleted`);
+  }
+}
+
+Post.observe(new PostObserver());
+```
+
+## Summary
+
+| Observer Type | Syntax | Use Case |
+|---------------|--------|----------|
+| Class-based | `User.observe(new UserObserver())` | Organized, multiple events |
+| Function-based | `User.observe((event, user) => {...})` | Simple, all events |
+| Object-based | `User.observe({ created(user) {...} })` | Specific events only |
+
+<Tip>
+  Observers are perfect for cross-cutting concerns like logging, notifications, and cache management. They keep your main business logic clean while ensuring important side effects always happen.
+</Tip>

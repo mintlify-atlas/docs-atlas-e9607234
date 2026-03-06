@@ -1,0 +1,778 @@
+---
+title: QueryBuilder
+description: Fluent API for building complex queries with WHERE, JOIN, ORDER BY, and aggregations
+---
+
+The QueryBuilder provides a fluent, chainable API for constructing complex database queries. Inspired by Laravel's Query Builder, it makes database operations elegant and readable.
+
+## Initialization
+
+Create a QueryBuilder instance in three ways:
+
+<CodeGroup>
+```javascript From Table
+const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+const query = db.table("Users");
+```
+
+```javascript From Model
+const query = User.query();
+```
+
+```javascript Manual
+const query = new QueryBuilder(db.driver(), "Users");
+```
+</CodeGroup>
+
+## SELECT Queries
+
+### Select Specific Columns
+
+```javascript
+// All columns (default)
+const users = db.table("Users").get();
+
+// Specific columns
+const users = db.table("Users")
+  .select("id", "name", "email")
+  .get();
+
+// Accumulative selects
+const users = db.table("Users")
+  .select("id")
+  .select("name", "email")  // Adds to previous selection
+  .get();
+```
+
+### Select with Relationships
+
+```javascript
+const posts = Post.query()
+  .select("id", "title", "user_id")
+  .with("author")
+  .get();
+```
+
+## WHERE Clauses
+
+### Basic WHERE
+
+```javascript
+// Implicit equality operator (===)
+const users = db.table("Users")
+  .where("status", "active")
+  .get();
+
+// Explicit operator
+const adults = db.table("Users")
+  .where("age", ">=", 18)
+  .get();
+
+// Multiple conditions (AND)
+const users = db.table("Users")
+  .where("country", "ES")
+  .where("verified", true)
+  .where("age", ">=", 18)
+  .get();
+```
+
+### Supported Operators
+
+<ParamField path="==" type="operator">
+  Equal (loose comparison)
+</ParamField>
+
+<ParamField path="===" type="operator">
+  Equal (strict comparison)
+</ParamField>
+
+<ParamField path="!=" type="operator">
+  Not equal
+</ParamField>
+
+<ParamField path="<" type="operator">
+  Less than
+</ParamField>
+
+<ParamField path=">" type="operator">
+  Greater than
+</ParamField>
+
+<ParamField path="<=" type="operator">
+  Less than or equal
+</ParamField>
+
+<ParamField path=">=" type="operator">
+  Greater than or equal
+</ParamField>
+
+### orWhere() - OR Conditions
+
+```javascript
+const users = db.table("Users")
+  .where("role", "admin")
+  .orWhere("role", "moderator")
+  .get();
+
+// WHERE (role = 'admin' OR role = 'moderator')
+```
+
+### whereIn() - IN Clause
+
+```javascript
+const users = db.table("Users")
+  .whereIn("country", ["ES", "MX", "AR"])
+  .get();
+
+// WHERE country IN ('ES', 'MX', 'AR')
+```
+
+### whereNotIn() - NOT IN Clause
+
+```javascript
+const users = db.table("Users")
+  .whereNotIn("status", ["banned", "suspended"])
+  .get();
+
+// WHERE status NOT IN ('banned', 'suspended')
+```
+
+### whereNull() - NULL Check
+
+```javascript
+const users = db.table("Users")
+  .whereNull("deleted_at")
+  .get();
+
+// WHERE deleted_at IS NULL
+```
+
+### whereNotNull() - NOT NULL Check
+
+```javascript
+const users = db.table("Users")
+  .whereNotNull("email_verified_at")
+  .get();
+
+// WHERE email_verified_at IS NOT NULL
+```
+
+### whereBetween() - BETWEEN Clause
+
+```javascript
+const users = db.table("Users")
+  .whereBetween("age", [18, 65])
+  .get();
+
+// WHERE age BETWEEN 18 AND 65
+```
+
+## ORDER BY
+
+Sort query results:
+
+```javascript
+// Ascending order (default)
+const users = db.table("Users")
+  .orderBy("name")
+  .get();
+
+// Descending order
+const users = db.table("Users")
+  .orderBy("created_at", "desc")
+  .get();
+
+// Multiple sorting
+const users = db.table("Users")
+  .orderBy("country", "asc")
+  .orderBy("name", "asc")
+  .get();
+```
+
+## LIMIT and OFFSET
+
+### limit() - Limit Results
+
+```javascript
+// First 10 users
+const users = db.table("Users")
+  .limit(10)
+  .get();
+```
+
+### offset() - Skip Results
+
+```javascript
+// Skip first 20, get next 10
+const users = db.table("Users")
+  .offset(20)
+  .limit(10)
+  .get();
+```
+
+### Manual Pagination
+
+```javascript
+const page = 2;
+const perPage = 15;
+
+const users = db.table("Users")
+  .offset((page - 1) * perPage)
+  .limit(perPage)
+  .get();
+```
+
+## JOINS
+
+### join() - INNER JOIN
+
+```javascript
+const posts = db.table("Posts")
+  .join("Users", "Posts.user_id", "==", "Users.id")
+  .select("Posts.title", "Users.name")
+  .get();
+
+// SELECT Posts.title, Users.name
+// FROM Posts
+// INNER JOIN Users ON Posts.user_id = Users.id
+```
+
+### leftJoin() - LEFT JOIN
+
+```javascript
+const posts = db.table("Posts")
+  .leftJoin("Comments", "Posts.id", "==", "Comments.post_id")
+  .get();
+
+// LEFT JOIN Comments ON Posts.id = Comments.post_id
+```
+
+### Multiple Joins
+
+```javascript
+const posts = db.table("Posts")
+  .join("Users", "Posts.user_id", "==", "Users.id")
+  .leftJoin("Categories", "Posts.category_id", "==", "Categories.id")
+  .select("Posts.title", "Users.name", "Categories.name")
+  .get();
+```
+
+## GROUP BY and HAVING
+
+### groupBy() - Group Records
+
+```javascript
+const stats = db.table("Orders")
+  .groupBy("country")
+  .get();
+
+// Each result has:
+// - keys: { country: "ES" }
+// - count: 15
+// - items: [all records in group]
+```
+
+### Multiple Group By
+
+```javascript
+const stats = db.table("Orders")
+  .groupBy("country", "status")
+  .get();
+```
+
+### having() - Filter Groups
+
+```javascript
+const popularCountries = db.table("Orders")
+  .groupBy("country")
+  .having("count", ">", 10)
+  .get();
+
+// Only countries with more than 10 orders
+```
+
+## DISTINCT
+
+Return unique values:
+
+```javascript
+// All fields distinct
+const users = db.table("Users")
+  .distinct()
+  .get();
+
+// Specific columns distinct
+const countries = db.table("Users")
+  .select("country")
+  .distinct()
+  .get();
+```
+
+## Eager Loading
+
+Load relationships efficiently to avoid N+1 queries:
+
+```javascript
+// Single relationship
+const posts = Post.query()
+  .with("author")
+  .get();
+
+// Multiple relationships
+const posts = Post.query()
+  .with("author", "comments", "tags")
+  .get();
+
+// Nested relationships
+const posts = Post.query()
+  .with("comments.author")
+  .get();
+```
+
+### With WHERE Clauses
+
+```javascript
+const users = User.query()
+  .where("status", "active")
+  .with("posts", "comments")
+  .get();
+```
+
+<Note>
+  Eager loading is crucial for performance. It reduces database queries from N+1 to just 2-3 queries.
+</Note>
+
+## Aggregations
+
+### count() - Count Records
+
+```javascript
+const count = db.table("Users")
+  .where("status", "active")
+  .count();
+
+Logger.log(count);  // 150
+```
+
+### exists() - Check Existence
+
+```javascript
+const hasAdmins = db.table("Users")
+  .where("role", "admin")
+  .exists();
+
+if (hasAdmins) {
+  Logger.log("Administrators exist");
+}
+```
+
+### sum() - Calculate Sum
+
+```javascript
+const total = db.table("Orders")
+  .where("status", "completed")
+  .sum("amount");
+
+Logger.log(`Total: ${total}`);
+```
+
+### avg() - Calculate Average
+
+```javascript
+const avgAge = db.table("Users")
+  .avg("age");
+
+Logger.log(`Average age: ${avgAge}`);
+```
+
+### max() / min() - Find Extremes
+
+```javascript
+const maxPrice = db.table("Products").max("price");
+const minPrice = db.table("Products").min("price");
+
+Logger.log(`Price range: ${minPrice} - ${maxPrice}`);
+```
+
+## Pagination
+
+### paginate() - Laravel-style Pagination
+
+```javascript
+const page1 = db.table("Users")
+  .where("status", "active")
+  .orderBy("name")
+  .paginate(15, 1);  // 15 per page, page 1
+
+// Returns:
+// {
+//   data: [...],        // Records for this page
+//   total: 150,         // Total records
+//   per_page: 15,       // Items per page
+//   current_page: 1,    // Current page number
+//   last_page: 10,      // Last page number
+//   from: 1,            // First record number
+//   to: 15              // Last record number
+// }
+```
+
+### Pagination with Config Object
+
+```javascript
+const result = db.table("Users")
+  .paginate({
+    perPage: 20,
+    page: 2
+  });
+```
+
+### API Pagination Example
+
+```javascript
+function getUsersPage(page) {
+  const result = User.query()
+    .where("status", "active")
+    .with("profile")
+    .paginate(20, page);
+
+  return {
+    users: result.data,
+    pagination: {
+      current: result.current_page,
+      total: result.last_page,
+      from: result.from,
+      to: result.to,
+      totalRecords: result.total
+    }
+  };
+}
+```
+
+## Write Operations
+
+### insert() - Insert Record
+
+```javascript
+db.table("Users").insert({
+  name: "John Doe",
+  email: "john@example.com",
+  age: 30
+});
+```
+
+### update() - Update Records
+
+```javascript
+// Update matching records
+db.table("Users")
+  .where("status", "pending")
+  .update({ status: "active" });
+
+// Returns: number of updated records
+```
+
+### updateById() - Update by ID
+
+```javascript
+db.table("Users")
+  .updateById(123, {
+    name: "New Name",
+    email: "newemail@example.com"
+  });
+```
+
+### delete() - Delete Records
+
+```javascript
+// Delete matching records
+db.table("Users")
+  .where("last_login", "<", "2024-01-01")
+  .delete();
+
+// Returns: number of deleted records
+```
+
+### deleteById() - Delete by ID
+
+```javascript
+db.table("Users").deleteById(123);
+```
+
+### increment() / decrement() - Atomic Updates
+
+```javascript
+// Increment views by 1
+db.table("Posts")
+  .where("id", 1)
+  .increment("views");
+
+// Increment by specific amount
+db.table("Posts")
+  .where("id", 1)
+  .increment("views", 10);
+
+// Decrement
+db.table("Products")
+  .where("id", 5)
+  .decrement("stock", 2);
+```
+
+## Advanced Methods
+
+### first() - First Result
+
+```javascript
+const user = db.table("Users")
+  .where("email", "john@example.com")
+  .first();
+
+if (user) {
+  Logger.log(user.name);
+}
+```
+
+### pluck() - Extract Column
+
+```javascript
+// Array of emails
+const emails = db.table("Users")
+  .where("verified", true)
+  .pluck("email");
+
+Logger.log(emails);  // ["john@...", "jane@...", ...]
+```
+
+### scope() - Apply Model Scopes
+
+```javascript
+class User extends Model {
+  static scopeActive(query) {
+    return query.where("status", "active");
+  }
+
+  static scopeVerified(query) {
+    return query.where("verified", true);
+  }
+}
+
+// Apply scopes
+const users = User.query()
+  .scope("active", "verified")
+  .get();
+```
+
+## Complete Examples
+
+### User Dashboard
+
+```javascript
+function getUserDashboard() {
+  const activeCount = db.table("Users")
+    .where("status", "active")
+    .count();
+
+  const avgAge = db.table("Users")
+    .where("status", "active")
+    .avg("age");
+
+  const topUsers = db.table("Users")
+    .where("status", "active")
+    .orderBy("points", "desc")
+    .limit(10)
+    .get();
+
+  const byCountry = db.table("Users")
+    .where("status", "active")
+    .groupBy("country")
+    .get();
+
+  return {
+    totalActive: activeCount,
+    averageAge: avgAge,
+    topUsers: topUsers,
+    byCountry: byCountry
+  };
+}
+```
+
+### Advanced Search
+
+```javascript
+function searchUsers(filters) {
+  let query = db.table("Users");
+
+  if (filters.country) {
+    query = query.where("country", filters.country);
+  }
+
+  if (filters.minAge) {
+    query = query.where("age", ">=", filters.minAge);
+  }
+
+  if (filters.maxAge) {
+    query = query.where("age", "<=", filters.maxAge);
+  }
+
+  if (filters.verified !== undefined) {
+    query = query.where("verified", filters.verified);
+  }
+
+  if (filters.roles && filters.roles.length) {
+    query = query.whereIn("role", filters.roles);
+  }
+
+  return query
+    .orderBy(filters.sortBy || "created_at", filters.sortDir || "desc")
+    .paginate(filters.perPage || 20, filters.page || 1);
+}
+```
+
+### Sales Report
+
+```javascript
+function getSalesReport(startDate, endDate) {
+  // Total revenue
+  const totalRevenue = db.table("Orders")
+    .where("status", "completed")
+    .where("created_at", ">=", startDate)
+    .where("created_at", "<=", endDate)
+    .sum("total");
+
+  // Average order value
+  const avgOrder = db.table("Orders")
+    .where("status", "completed")
+    .where("created_at", ">=", startDate)
+    .where("created_at", "<=", endDate)
+    .avg("total");
+
+  // Sales by product
+  const byProduct = db.table("OrderItems")
+    .join("Orders", "OrderItems.order_id", "==", "Orders.id")
+    .where("Orders.status", "completed")
+    .where("Orders.created_at", ">=", startDate)
+    .where("Orders.created_at", "<=", endDate)
+    .groupBy("OrderItems.product_id")
+    .select("OrderItems.product_id", "OrderItems.product_name")
+    .get();
+
+  // Top customers
+  const topCustomers = db.table("Orders")
+    .where("status", "completed")
+    .where("created_at", ">=", startDate)
+    .where("created_at", "<=", endDate)
+    .groupBy("customer_id")
+    .having("count", ">", 5)
+    .orderBy("count", "desc")
+    .limit(10)
+    .get();
+
+  return {
+    totalRevenue,
+    avgOrder,
+    byProduct,
+    topCustomers
+  };
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Chain Methods" icon="link">
+    ```javascript
+    const users = db.table("Users")
+      .where("status", "active")
+      .orderBy("name")
+      .limit(10)
+      .get();
+    ```
+  </Card>
+  
+  <Card title="Use whereIn" icon="list">
+    ```javascript
+    // ✅ Efficient
+    .whereIn("country", ["ES", "MX", "AR"])
+    
+    // ❌ Inefficient
+    .where("country", "ES")
+    .orWhere("country", "MX")
+    .orWhere("country", "AR")
+    ```
+  </Card>
+  
+  <Card title="Select Specific Fields" icon="filter">
+    ```javascript
+    // ✅ Only needed fields
+    .select("id", "name", "email")
+    
+    // ❌ All fields
+    .get()
+    ```
+  </Card>
+  
+  <Card title="Use Pagination" icon="table-cells">
+    ```javascript
+    // ✅ Paginated
+    .paginate(20, page)
+    
+    // ❌ All at once
+    .get()  // May timeout
+    ```
+  </Card>
+</CardGroup>
+
+### Common Mistakes
+
+<Warning>
+  **Don't query in loops** - Use eager loading instead to avoid N+1 queries:
+  
+  ```javascript
+  // ❌ N+1 queries
+  const posts = db.table("Posts").get();
+  posts.each(post => {
+    const author = db.table("Users").where("id", post.user_id).first();
+  });
+  
+  // ✅ Eager loading
+  const posts = Post.with("author").get();
+  ```
+</Warning>
+
+<Warning>
+  **Don't modify query after execution**:
+  
+  ```javascript
+  // ❌ Doesn't work
+  const query = db.table("Users").where("status", "active");
+  const users = query.get();
+  query.where("age", ">", 18);  // Already executed
+  
+  // ✅ Create new query
+  const query1 = db.table("Users").where("status", "active");
+  const users1 = query1.get();
+  
+  const query2 = db.table("Users")
+    .where("status", "active")
+    .where("age", ">", 18);
+  const users2 = query2.get();
+  ```
+</Warning>
+
+## Method Reference
+
+| Category | Methods |
+|----------|--------|
+| **SELECT** | `select()` |
+| **WHERE** | `where()`, `orWhere()`, `whereIn()`, `whereNotIn()`, `whereNull()`, `whereNotNull()`, `whereBetween()` |
+| **ORDER** | `orderBy()` |
+| **LIMIT** | `limit()`, `offset()` |
+| **JOINS** | `join()`, `leftJoin()` |
+| **GROUP** | `groupBy()`, `having()` |
+| **DISTINCT** | `distinct()` |
+| **EAGER** | `with()` |
+| **RETRIEVING** | `get()`, `first()`, `pluck()`, `paginate()` |
+| **AGGREGATES** | `count()`, `sum()`, `avg()`, `max()`, `min()`, `exists()` |
+| **WRITING** | `insert()`, `update()`, `updateById()`, `delete()`, `deleteById()`, `increment()`, `decrement()` |
+| **SCOPES** | `scope()` |
+
+The QueryBuilder provides a powerful and flexible way to construct database queries. Use it to write clean, maintainable code!

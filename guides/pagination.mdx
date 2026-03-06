@@ -1,0 +1,466 @@
+---
+title: 'Pagination'
+description: 'Efficiently paginate large result sets in ServiceSQL'
+---
+
+Pagination is essential when working with large datasets. ServiceSQL provides Laravel-style pagination that makes it easy to split results into manageable pages.
+
+## Why Pagination Matters
+
+Working with large datasets in Google Sheets can lead to:
+- Execution timeouts (6-minute limit for Apps Script)
+- Memory issues
+- Slow response times
+- Poor user experience
+
+<Warning>
+  Loading all records from a large table with `.get()` can cause timeout errors. Always use pagination for tables with more than 1000 rows.
+</Warning>
+
+## Basic Pagination
+
+The `paginate()` method returns a pagination object with metadata:
+
+```javascript
+const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+
+const result = db.table("Users")
+  .where("status", "active")
+  .orderBy("name")
+  .paginate(15, 1); // 15 per page, page 1
+```
+
+### Pagination Response Structure
+
+The `paginate()` method returns an object with:
+
+```javascript
+{
+  data: [...],          // Array of records for this page
+  total: 150,           // Total number of records
+  per_page: 15,         // Items per page
+  current_page: 1,      // Current page number
+  last_page: 10,        // Last page number
+  from: 1,              // First record number on this page
+  to: 15                // Last record number on this page
+}
+```
+
+## Pagination with Options
+
+You can pass pagination parameters as an object:
+
+```javascript
+const result = db.table("Users")
+  .paginate({
+    perPage: 20,
+    page: 2
+  });
+```
+
+Both formats are supported:
+- `paginate(perPage, page)`
+- `paginate({ perPage, page })`
+
+## Manual Pagination with Limit and Offset
+
+For more control, use `limit()` and `offset()` directly:
+
+```javascript
+const page = 2;
+const perPage = 15;
+
+const users = db.table("Users")
+  .offset((page - 1) * perPage)  // Skip first page
+  .limit(perPage)                 // Take 15 records
+  .get();
+```
+
+<Note>
+  `paginate()` is recommended over manual `limit()`/`offset()` because it automatically calculates page metadata.
+</Note>
+
+## Implementation Examples
+
+### Building a Paginated API
+
+```javascript
+function getUsersPage(page = 1) {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  const result = db.table("Users")
+    .where("status", "active")
+    .orderBy("created_at", "desc")
+    .paginate(20, page);
+
+  return {
+    users: result.data,
+    pagination: {
+      current: result.current_page,
+      total: result.last_page,
+      from: result.from,
+      to: result.to,
+      totalRecords: result.total
+    }
+  };
+}
+
+// Usage
+const page1 = getUsersPage(1);
+Logger.log(`Showing ${page1.pagination.from}-${page1.pagination.to} of ${page1.pagination.totalRecords}`);
+```
+
+### Pagination with Filters
+
+<Steps>
+  <Step title="Build the base query">
+    Start with your filtering conditions:
+    ```javascript
+    let query = db.table("Products")
+      .where("status", "available");
+    ```
+  </Step>
+
+  <Step title="Add dynamic filters">
+    Apply filters based on user input:
+    ```javascript
+    if (filters.category) {
+      query = query.where("category", filters.category);
+    }
+
+    if (filters.minPrice) {
+      query = query.where("price", ">=", filters.minPrice);
+    }
+    ```
+  </Step>
+
+  <Step title="Apply pagination">
+    Paginate the filtered results:
+    ```javascript
+    const result = query
+      .orderBy("created_at", "desc")
+      .paginate(filters.perPage || 20, filters.page || 1);
+    ```
+  </Step>
+</Steps>
+
+Complete example:
+
+```javascript
+function searchProducts(filters = {}) {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  let query = db.table("Products")
+    .where("status", "available");
+
+  // Apply filters
+  if (filters.category) {
+    query = query.where("category", filters.category);
+  }
+
+  if (filters.minPrice) {
+    query = query.where("price", ">=", filters.minPrice);
+  }
+
+  if (filters.maxPrice) {
+    query = query.where("price", "<=", filters.maxPrice);
+  }
+
+  if (filters.search) {
+    query = query.where("name", "like", `%${filters.search}%`);
+  }
+
+  // Paginate
+  const result = query
+    .orderBy(filters.sortBy || "created_at", filters.sortDir || "desc")
+    .paginate(filters.perPage || 20, filters.page || 1);
+
+  return result;
+}
+```
+
+### Processing Large Datasets in Chunks
+
+When you need to process all records but avoid timeouts:
+
+```javascript
+function processAllUsers() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const perPage = 100;
+  let currentPage = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const result = db.table("Users")
+      .where("status", "active")
+      .paginate(perPage, currentPage);
+
+    // Process this batch
+    result.data.forEach(user => {
+      processUser(user);
+    });
+
+    Logger.log(`Processed page ${currentPage} of ${result.last_page}`);
+
+    // Check if there are more pages
+    hasMore = currentPage < result.last_page;
+    currentPage++;
+
+    // Optional: prevent timeouts with sleep between batches
+    if (hasMore) {
+      Utilities.sleep(100);
+    }
+  }
+
+  Logger.log("All users processed");
+}
+
+function processUser(user) {
+  // Your processing logic here
+  Logger.log(`Processing ${user.name}`);
+}
+```
+
+<Tip>
+  When processing large datasets, add `Utilities.sleep(100)` between pages to avoid hitting rate limits.
+</Tip>
+
+### Pagination with Models
+
+Pagination works seamlessly with Models:
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  static _timestamps = true;
+
+  static scopeActive(query) {
+    return query.where("status", "active");
+  }
+}
+
+User.use(db);
+
+// Paginate with scopes
+const result = User.query()
+  .scope("active")
+  .with("posts")  // Eager load relationships
+  .paginate(20, 1);
+
+// Access model instances
+result.data.each(user => {
+  Logger.log(`${user.name} has ${user.posts.count()} posts`);
+});
+```
+
+### Pagination with Eager Loading
+
+Combine pagination with eager loading to efficiently load related data:
+
+```javascript
+const result = Post.query()
+  .with("author", "comments.author", "tags")
+  .where("published", true)
+  .orderBy("created_at", "desc")
+  .paginate(10, page);
+
+// All relationships are loaded efficiently
+result.data.each(post => {
+  Logger.log(`${post.title} by ${post.author.name}`);
+  Logger.log(`${post.comments.count()} comments`);
+  Logger.log(`Tags: ${post.tags.pluck("name").all().join(", ")}`);
+});
+```
+
+## Building Pagination UI
+
+### Generate Page Numbers
+
+```javascript
+function generatePageNumbers(currentPage, lastPage, delta = 2) {
+  const pages = [];
+  const left = currentPage - delta;
+  const right = currentPage + delta + 1;
+  
+  for (let i = 1; i <= lastPage; i++) {
+    if (i === 1 || i === lastPage || (i >= left && i < right)) {
+      pages.push(i);
+    }
+  }
+  
+  // Add ellipsis
+  const pagesWithDots = [];
+  let prev = 0;
+  
+  for (const page of pages) {
+    if (page - prev === 2) {
+      pagesWithDots.push(prev + 1);
+    } else if (page - prev !== 1) {
+      pagesWithDots.push("...");
+    }
+    pagesWithDots.push(page);
+    prev = page;
+  }
+  
+  return pagesWithDots;
+}
+
+// Usage
+const pagination = result;
+const pageNumbers = generatePageNumbers(
+  pagination.current_page,
+  pagination.last_page
+);
+
+Logger.log(pageNumbers); // [1, "...", 4, 5, 6, 7, 8, "...", 20]
+```
+
+### Create Navigation Links
+
+```javascript
+function createPaginationLinks(result) {
+  const links = {
+    first: 1,
+    last: result.last_page,
+    prev: result.current_page > 1 ? result.current_page - 1 : null,
+    next: result.current_page < result.last_page ? result.current_page + 1 : null,
+    current: result.current_page
+  };
+  
+  return links;
+}
+
+// Usage
+const links = createPaginationLinks(result);
+
+if (links.prev) {
+  Logger.log(`Previous: Page ${links.prev}`);
+}
+Logger.log(`Current: Page ${links.current}`);
+if (links.next) {
+  Logger.log(`Next: Page ${links.next}`);
+}
+```
+
+## Performance Optimization
+
+### Select Only Required Fields
+
+```javascript
+// ❌ Fetches all columns
+const result = db.table("Users").paginate(20, 1);
+
+// ✅ Only fetch needed columns
+const result = db.table("Users")
+  .select("id", "name", "email", "avatar_url")
+  .paginate(20, 1);
+```
+
+### Add Appropriate Indexes
+
+Ensure your sort columns are indexed (if supported by your driver):
+
+```javascript
+// Sort by indexed column
+const result = db.table("Users")
+  .orderBy("id", "desc")  // ID is typically indexed
+  .paginate(20, 1);
+```
+
+### Cache Pagination Results
+
+```javascript
+const cache = CacheService.getScriptCache();
+
+function getCachedPage(page) {
+  const cacheKey = `users_page_${page}`;
+  const cached = cache.get(cacheKey);
+  
+  if (cached) {
+    return JSON.parse(cached);
+  }
+  
+  const result = db.table("Users")
+    .where("status", "active")
+    .paginate(20, page);
+  
+  // Cache for 5 minutes
+  cache.put(cacheKey, JSON.stringify(result), 300);
+  
+  return result;
+}
+```
+
+<Tip>
+  Cache pagination results when data doesn't change frequently to improve response times.
+</Tip>
+
+## Best Practices
+
+### Use Appropriate Page Sizes
+
+<Card title="Small datasets (< 100 rows)" icon="file">
+  ```javascript
+  .paginate(20, page) // 20 per page
+  ```
+</Card>
+
+<Card title="Medium datasets (100-1000 rows)" icon="files">
+  ```javascript
+  .paginate(50, page) // 50 per page
+  ```
+</Card>
+
+<Card title="Large datasets (> 1000 rows)" icon="database">
+  ```javascript
+  .paginate(100, page) // 100 per page
+  ```
+</Card>
+
+### Always Order Results
+
+```javascript
+// ✅ Predictable pagination
+const result = db.table("Users")
+  .orderBy("id", "asc")
+  .paginate(20, page);
+
+// ❌ Unpredictable results across pages
+const result = db.table("Users")
+  .paginate(20, page);
+```
+
+### Validate Page Numbers
+
+```javascript
+function getUsers(requestedPage) {
+  const page = Math.max(1, parseInt(requestedPage) || 1);
+  
+  const result = db.table("Users")
+    .orderBy("created_at", "desc")
+    .paginate(20, page);
+  
+  // Redirect to last page if requested page is too high
+  if (page > result.last_page && result.last_page > 0) {
+    return db.table("Users")
+      .orderBy("created_at", "desc")
+      .paginate(20, result.last_page);
+  }
+  
+  return result;
+}
+```
+
+## Summary
+
+ServiceSQL provides powerful pagination capabilities:
+
+- **Simple API**: `paginate(perPage, page)` returns data and metadata
+- **Laravel-style**: Familiar structure for developers from Laravel/PHP
+- **Flexible**: Works with filters, sorting, and eager loading
+- **Efficient**: Prevents timeouts and memory issues with large datasets
+
+For related topics, see:
+- [QueryBuilder](/api/query-builder) - Building complex queries
+- [Aggregations](/guides/aggregations) - Computing totals and statistics
+- [Best Practices](/guides/best-practices) - Performance optimization

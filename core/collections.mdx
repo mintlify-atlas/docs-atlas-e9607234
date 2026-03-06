@@ -1,0 +1,689 @@
+---
+title: Collections
+description: Powerful array wrapper for filtering, mapping, sorting, and transforming query results
+---
+
+Collections provide a fluent, chainable API for working with arrays of data. All query results in ServiceSQL return Collection instances, giving you powerful methods to filter, transform, and manipulate data.
+
+## Getting Collections
+
+All query methods automatically return Collections:
+
+```javascript
+// From Model
+const users = User.all();  // Collection
+const admins = User.where("role", "admin").get();  // Collection
+
+// From QueryBuilder
+const posts = db.table("Posts").get();  // Collection
+const published = Post.scope("published").get();  // Collection
+```
+
+## Basic Methods
+
+### all() - Get Native Array
+
+```javascript
+const users = User.all();
+const array = users.all();  // Native JavaScript array
+```
+
+### count() - Count Elements
+
+```javascript
+const users = User.all();
+Logger.log(users.count());  // 150
+```
+
+### isEmpty() / isNotEmpty()
+
+```javascript
+const users = User.where("country", "XX").get();
+
+if (users.isEmpty()) {
+  Logger.log("No users from that country");
+}
+
+if (users.isNotEmpty()) {
+  Logger.log(`Found ${users.count()} users`);
+}
+```
+
+### first() / last()
+
+```javascript
+const users = User.all();
+
+// First element
+const firstUser = users.first();
+
+// Last element
+const lastUser = users.last();
+
+// With callback
+const firstAdmin = users.first(u => u.role === "admin");
+const lastActive = users.last(u => u.status === "active");
+```
+
+## Filtering
+
+### filter() - Custom Filter
+
+```javascript
+const users = User.all();
+
+// Users over 18
+const adults = users.filter(u => u.age >= 18);
+
+// Users with verified email
+const verified = users.filter(u => u.email_verified);
+```
+
+### where() - Filter by Field
+
+```javascript
+const users = User.all();
+
+// Implicit equality (===)
+const admins = users.where("role", "admin");
+
+// Explicit operator
+const adults = users.where("age", ">=", 18);
+const active = users.where("status", "===", "active");
+```
+
+### whereIn() / whereNotIn()
+
+```javascript
+const users = User.all();
+
+// Users with specific roles
+const staff = users.whereIn("role", ["admin", "editor", "moderator"]);
+
+// Users NOT from these countries
+const international = users.whereNotIn("country", ["US", "CA"]);
+```
+
+### whereNull() / whereNotNull()
+
+```javascript
+const users = User.all();
+
+// Users without bio
+const noBio = users.whereNull("bio");
+
+// Users with avatar
+const withAvatar = users.whereNotNull("avatar");
+```
+
+## Transformations
+
+### map() - Transform Elements
+
+```javascript
+const users = User.all();
+
+// Get only names
+const names = users.map(u => u.name);
+
+// Create custom objects
+const simple = users.map(u => ({
+  id: u.id,
+  fullName: `${u.first_name} ${u.last_name}`,
+  isAdmin: u.role === "admin"
+}));
+```
+
+### pluck() - Extract Field Values
+
+```javascript
+const users = User.all();
+
+// Array of emails
+const emails = users.pluck("email");
+
+// Nested properties
+const cities = users.pluck("address.city");
+```
+
+### unique() - Unique Values
+
+```javascript
+const users = User.all();
+
+// Unique countries
+const countries = users.pluck("country").unique();
+
+// Unique users by email
+const uniqueUsers = users.unique("email");
+```
+
+### flatMap() - Map and Flatten
+
+```javascript
+const users = User.all();
+
+// All hobbies from all users
+const allHobbies = users.flatMap(u => u.hobbies);
+```
+
+## Sorting
+
+### sort() - Custom Sort
+
+```javascript
+const users = User.all();
+
+// Natural sort
+const sorted = users.sort();
+
+// With comparator
+const byAge = users.sort((a, b) => a.age - b.age);
+```
+
+### sortBy() / sortByDesc()
+
+```javascript
+const users = User.all();
+
+// Sort by name (ascending)
+const byName = users.sortBy("name");
+
+// Sort by age (descending)
+const byAge = users.sortByDesc("age");
+
+// Nested properties
+const byCity = users.sortBy("address.city");
+```
+
+### reverse() - Reverse Order
+
+```javascript
+const users = User.all();
+const reversed = users.reverse();
+```
+
+## Slicing and Pagination
+
+### take() / skip()
+
+```javascript
+const users = User.all();
+
+// First 10
+const first10 = users.take(10);
+
+// Skip first 20
+const after20 = users.skip(20);
+
+// Combined: manual pagination
+const page2 = users.skip(10).take(10);
+```
+
+### slice()
+
+```javascript
+const users = User.all();
+
+// From index 10 to 20
+const slice = users.slice(10, 20);
+```
+
+### chunk() - Split into Groups
+
+```javascript
+const users = User.all();
+
+// Split into chunks of 50
+const chunks = users.chunk(50);
+
+chunks.each(chunk => {
+  Logger.log(`Processing ${chunk.count()} users`);
+  // Process each chunk
+});
+```
+
+### forPage() - Simple Pagination
+
+```javascript
+const users = User.all();
+
+// Page 1, 15 per page
+const page1 = users.forPage(1, 15);
+
+// Page 2
+const page2 = users.forPage(2, 15);
+```
+
+## Grouping
+
+### groupBy() - Group by Field
+
+```javascript
+const users = User.all();
+
+// Group by country
+const byCountry = users.groupBy("country");
+
+// Returns:
+// {
+//   "ES": Collection([...]),
+//   "US": Collection([...]),
+//   "MX": Collection([...])
+// }
+
+// Usage:
+for (const country in byCountry) {
+  Logger.log(`${country}: ${byCountry[country].count()} users`);
+}
+```
+
+### keyBy() - Index by Field
+
+```javascript
+const users = User.all();
+
+// Index by ID
+const usersById = users.keyBy("id");
+
+// Direct access
+const user = usersById[123];
+
+// Index by email
+const usersByEmail = users.keyBy("email");
+const john = usersByEmail["john@example.com"];
+```
+
+## Aggregations
+
+### sum() - Calculate Sum
+
+```javascript
+const orders = Order.all();
+
+// Sum of totals
+const revenue = orders.sum("total");
+
+// Sum of numbers
+const numbers = Collection.make([1, 2, 3, 4, 5]);
+Logger.log(numbers.sum());  // 15
+```
+
+### avg() - Calculate Average
+
+```javascript
+const users = User.all();
+
+// Average age
+const avgAge = users.avg("age");
+
+// Average rating
+const products = Product.all();
+const avgRating = products.avg("rating");
+```
+
+### max() / min()
+
+```javascript
+const products = Product.all();
+
+// Maximum price
+const maxPrice = products.max("price");
+
+// Minimum price
+const minPrice = products.min("price");
+```
+
+## Boolean Checks
+
+### contains() - Contains Value
+
+```javascript
+const users = User.all();
+
+// Has any admin?
+const hasAdmin = users.contains("role", "admin");
+
+// Contains this user?
+const hasJohn = users.contains(johnUser);
+```
+
+### every() - All Match
+
+```javascript
+const users = User.all();
+
+// All adults?
+const allAdults = users.every(u => u.age >= 18);
+
+// All verified?
+const allVerified = users.every(u => u.verified === true);
+```
+
+### some() - At Least One Matches
+
+```javascript
+const users = User.all();
+
+// Any admin?
+const hasAdmin = users.some(u => u.role === "admin");
+
+// Any minor?
+const hasMinor = users.some(u => u.age < 18);
+```
+
+## Utilities
+
+### each() - Iterate
+
+```javascript
+const users = User.all();
+
+// Send email to each user
+users.each(user => {
+  sendEmail(user.email, "Welcome");
+});
+```
+
+### tap() - Debug in Chain
+
+```javascript
+const result = User.all()
+  .where("status", "active")
+  .tap(collection => {
+    Logger.log(`Active users: ${collection.count()}`);
+  })
+  .sortBy("name")
+  .take(10);
+```
+
+### pipe() - Custom Transformation
+
+```javascript
+const users = User.all();
+
+const result = users.pipe(collection => {
+  // Custom logic
+  return collection.filter(u => u.age >= 18)
+                   .sortBy("name")
+                   .take(100);
+});
+```
+
+### toArray() / toJSON()
+
+```javascript
+const users = User.all();
+
+// Convert to plain array
+const array = users.toArray();
+
+// For JSON serialization (calls toJSON() on each model)
+const json = JSON.stringify(users.toJSON());
+```
+
+## Random Operations
+
+### random() - Random Element
+
+```javascript
+const users = User.all();
+
+// One random user
+const randomUser = users.random();
+
+// 5 random users
+const random5 = users.random(5);  // Collection
+```
+
+### shuffle() - Shuffle Collection
+
+```javascript
+const users = User.all();
+const shuffled = users.shuffle();
+```
+
+## Set Operations
+
+### diff() - Difference
+
+```javascript
+const all = User.all();
+const banned = User.where("banned", true).get();
+
+// Non-banned users
+const active = all.diff(banned);
+```
+
+### intersect() - Intersection
+
+```javascript
+const admins = User.where("role", "admin").get();
+const verified = User.where("verified", true).get();
+
+// Verified admins
+const verifiedAdmins = admins.intersect(verified);
+```
+
+### merge() - Merge Collections
+
+```javascript
+const users1 = User.where("country", "ES").get();
+const users2 = User.where("country", "MX").get();
+
+// Combine
+const combined = users1.merge(users2);
+```
+
+## Advanced Methods
+
+### collapse() - Flatten One Level
+
+```javascript
+const grouped = User.all().groupBy("country");
+const allUsers = Collection.make(Object.values(grouped)).collapse();
+```
+
+### flatten() - Recursive Flatten
+
+```javascript
+const nested = Collection.make([
+  [1, 2, [3, 4]],
+  [5, [6, 7]]
+]);
+
+const flat = nested.flatten();  // [1,2,3,4,5,6,7]
+```
+
+### reduce() - Reduce to Value
+
+```javascript
+const orders = Order.all();
+
+// Total sales
+const total = orders.reduce((sum, order) => sum + order.total, 0);
+
+// Summary object
+const summary = orders.reduce((acc, order) => {
+  acc.total += order.total;
+  acc.count++;
+  return acc;
+}, { total: 0, count: 0 });
+```
+
+## Static Constructors
+
+### Collection.make()
+
+```javascript
+const collection = Collection.make([1, 2, 3, 4, 5]);
+```
+
+### Collection.wrap()
+
+```javascript
+// Wrap anything in Collection
+const collection1 = Collection.wrap([1, 2, 3]);
+const collection2 = Collection.wrap(singleValue);
+const collection3 = Collection.wrap(existingCollection);  // Doesn't double-wrap
+```
+
+### Collection.times()
+
+```javascript
+// Generate N elements
+const collection = Collection.times(5, i => ({
+  id: i,
+  name: `User ${i}`
+}));
+```
+
+### Collection.range()
+
+```javascript
+// Number range
+const numbers = Collection.range(1, 10);  // [1,2,3,4,5,6,7,8,9,10]
+```
+
+## Practical Examples
+
+### User Dashboard
+
+```javascript
+function getUserStats() {
+  const users = User.all();
+
+  return {
+    total: users.count(),
+    active: users.where("status", "active").count(),
+    byCountry: users.groupBy("country"),
+    avgAge: users.avg("age"),
+    topUsers: users.sortByDesc("points").take(10).toArray()
+  };
+}
+```
+
+### Batch Processing
+
+```javascript
+function sendBulkEmails() {
+  const users = User.scope("active", "verified").get();
+
+  // Process in chunks of 100
+  users.chunk(100).each(chunk => {
+    const emails = chunk.pluck("email").all();
+    sendBatchEmail(emails, "Monthly Newsletter");
+
+    Logger.log(`Sent ${emails.length} emails`);
+    Utilities.sleep(1000);  // Rate limiting
+  });
+}
+```
+
+### Sales Report
+
+```javascript
+function getSalesReport(startDate, endDate) {
+  const orders = Order.where("created_at", ">=", startDate)
+                      .where("created_at", "<=", endDate)
+                      .get();
+
+  return {
+    totalRevenue: orders.sum("total"),
+    avgOrderValue: orders.avg("total"),
+    ordersByStatus: orders.groupBy("status"),
+    topProducts: orders
+      .flatMap(o => o.items)
+      .groupBy("product_id")
+      .map(group => ({
+        product: group.first().product_name,
+        quantity: group.sum("quantity"),
+        revenue: group.sum("total")
+      }))
+      .sortByDesc("revenue")
+      .take(10)
+  };
+}
+```
+
+### Complex Filtering
+
+```javascript
+function getEligibleUsers() {
+  return User.all()
+    .where("age", ">=", 18)
+    .where("verified", true)
+    .whereNotIn("country", ["US", "CA"])
+    .whereNotNull("phone")
+    .filter(u => u.orders_count > 0)
+    .sortByDesc("created_at")
+    .take(100);
+}
+```
+
+## Chainable Methods
+
+Almost all Collection methods are chainable:
+
+```javascript
+const result = User.all()
+  .where("status", "active")        // Collection
+  .whereNotNull("email")            // Collection
+  .sortBy("name")                   // Collection
+  .unique("email")                  // Collection
+  .take(50)                         // Collection
+  .map(u => u.email)               // Collection
+  .filter(email => email.includes("gmail"))  // Collection
+  .toArray();                       // Array
+```
+
+## Performance Tips
+
+<Card title="Filter Before Loading" icon="gauge-high">
+  ```javascript
+  // ✅ Good - Filter at query level
+  const users = User.where("country", "ES").with("posts").get();
+  
+  // ❌ Less efficient - Filter after loading
+  const users = User.with("posts").get().where("country", "ES");
+  ```
+</Card>
+
+<Card title="Use Native Aggregates" icon="calculator">
+  ```javascript
+  // ✅ Faster - Query-level count
+  const count = User.where("status", "active").count();
+  
+  // ❌ Slower - Collection-level count
+  const count = User.all().where("status", "active").count();
+  ```
+</Card>
+
+<Card title="Chunk Large Datasets" icon="layer-group">
+  ```javascript
+  // ✅ Memory efficient
+  User.all().chunk(100).each(chunk => processChunk(chunk));
+  
+  // ❌ May cause timeout
+  const all = User.all().toArray();
+  processAll(all);
+  ```
+</Card>
+
+## Method Reference
+
+| Category | Methods |
+|----------|--------|
+| **Basic** | `all()`, `count()`, `isEmpty()`, `isNotEmpty()`, `first()`, `last()` |
+| **Filtering** | `filter()`, `where()`, `whereIn()`, `whereNotIn()`, `whereNull()`, `whereNotNull()` |
+| **Transform** | `map()`, `flatMap()`, `pluck()`, `unique()` |
+| **Sorting** | `sort()`, `sortBy()`, `sortByDesc()`, `reverse()` |
+| **Slicing** | `take()`, `skip()`, `slice()`, `chunk()`, `forPage()` |
+| **Grouping** | `groupBy()`, `keyBy()` |
+| **Aggregation** | `sum()`, `avg()`, `max()`, `min()` |
+| **Boolean** | `contains()`, `every()`, `some()` |
+| **Utilities** | `each()`, `tap()`, `pipe()`, `toArray()`, `toJSON()` |
+| **Advanced** | `collapse()`, `flatten()`, `reduce()`, `diff()`, `intersect()`, `merge()` |
+| **Random** | `random()`, `shuffle()` |
+
+Collections make data manipulation expressive and maintainable. Use them to write cleaner, more readable code!

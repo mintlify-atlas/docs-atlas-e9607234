@@ -1,0 +1,547 @@
+---
+title: GmailBuilder
+description: Fluent interface for sending emails with GmailApp in Apps Script
+---
+
+The `GmailBuilder` class provides a fluent, chainable API for working with Google Apps Script's `GmailApp`. It simplifies sending emails with recipients, attachments, HTML content, and thread operations.
+
+## Constructor
+
+```javascript
+const mail = new GmailBuilder(appsql)
+```
+
+<ParamField path="appsql" type="APPSQL">
+  Optional APPSQL instance for context
+</ParamField>
+
+## Recipients
+
+### to()
+
+Add primary recipients.
+
+```javascript
+mail.to(...addrs)
+```
+
+<ParamField path="addrs" type="string | array" required>
+  Email address(es) of primary recipients. Can be multiple arguments or arrays
+</ParamField>
+
+**Example:**
+
+```javascript
+// Single recipient
+mail.to("user@example.com");
+
+// Multiple recipients
+mail.to("user1@example.com", "user2@example.com");
+
+// Array of recipients
+mail.to(["user1@example.com", "user2@example.com"]);
+```
+
+### cc()
+
+Add CC (carbon copy) recipients.
+
+```javascript
+mail.cc(...addrs)
+```
+
+<ParamField path="addrs" type="string | array" required>
+  Email address(es) for CC
+</ParamField>
+
+### bcc()
+
+Add BCC (blind carbon copy) recipients.
+
+```javascript
+mail.bcc(...addrs)
+```
+
+<ParamField path="addrs" type="string | array" required>
+  Email address(es) for BCC
+</ParamField>
+
+## Email Content
+
+### subject()
+
+Set the email subject.
+
+```javascript
+mail.subject(s)
+```
+
+<ParamField path="s" type="string" required>
+  Subject line of the email
+</ParamField>
+
+### body()
+
+Set the plain text body.
+
+```javascript
+mail.body(text)
+```
+
+<ParamField path="text" type="string" required>
+  Plain text body of the email
+</ParamField>
+
+<Note>
+  Always include a plain text body even when using HTML, as some email clients don't support HTML rendering.
+</Note>
+
+### html()
+
+Set the HTML body.
+
+```javascript
+mail.html(html)
+```
+
+<ParamField path="html" type="string" required>
+  HTML body of the email
+</ParamField>
+
+**Example:**
+
+```javascript
+const mail = new GmailBuilder();
+
+mail
+  .to("user@example.com")
+  .subject("Welcome!")
+  .body("Welcome to our service.") // Fallback for non-HTML clients
+  .html("<h1>Welcome!</h1><p>Welcome to our service.</p>");
+```
+
+## Attachments and Images
+
+### attach()
+
+Attach files to the email.
+
+```javascript
+mail.attach(blobOrId)
+```
+
+<ParamField path="blobOrId" type="BlobSource | string | array" required>
+  File to attach. Can be a BlobSource, Drive file ID, or array of either
+</ParamField>
+
+**Example:**
+
+```javascript
+// Attach from Drive file ID
+mail.attach("DRIVE_FILE_ID");
+
+// Attach blob source
+const file = DriveApp.getFileById("FILE_ID");
+mail.attach(file.getBlob());
+
+// Attach multiple files
+mail.attach(["FILE_ID_1", "FILE_ID_2"]);
+```
+
+### inline()
+
+Add inline images for HTML emails.
+
+```javascript
+mail.inline(name, blob)
+```
+
+<ParamField path="name" type="string" required>
+  Reference name for the image (used in HTML as `cid:name`)
+</ParamField>
+
+<ParamField path="blob" type="BlobSource" required>
+  Image blob to embed
+</ParamField>
+
+**Example:**
+
+```javascript
+const logo = DriveApp.getFileById("LOGO_ID").getBlob();
+
+mail
+  .to("user@example.com")
+  .subject("Newsletter")
+  .html('<img src="cid:logo" /><p>Check out our logo!</p>')
+  .inline("logo", logo);
+```
+
+## Advanced Options
+
+### option()
+
+Set additional GmailApp options.
+
+```javascript
+mail.option(key, val)
+```
+
+<ParamField path="key" type="string" required>
+  Option key (e.g., "name", "replyTo")
+</ParamField>
+
+<ParamField path="val" type="any" required>
+  Option value
+</ParamField>
+
+**Example:**
+
+```javascript
+mail
+  .to("user@example.com")
+  .subject("Test")
+  .body("Test message")
+  .option("name", "Support Team")
+  .option("replyTo", "support@example.com");
+```
+
+## Sending and Drafting
+
+### send()
+
+Send the email immediately.
+
+```javascript
+mail.send()
+```
+
+<Note>
+  At least one recipient in `to()` is required to send an email.
+</Note>
+
+**Example:**
+
+```javascript
+const mail = new GmailBuilder();
+
+mail
+  .to("user@example.com")
+  .subject("Hello from ServiceSQL")
+  .body("This is a test email.")
+  .send();
+```
+
+### draft()
+
+Create a draft instead of sending immediately.
+
+```javascript
+mail.draft()
+```
+
+**Example:**
+
+```javascript
+const draft = new GmailBuilder()
+  .to("user@example.com")
+  .subject("Draft email")
+  .body("Review this before sending.")
+  .draft();
+```
+
+## Thread Operations
+
+### thread()
+
+Specify a thread ID for reply or forward operations.
+
+```javascript
+mail.thread(threadId)
+```
+
+<ParamField path="threadId" type="string" required>
+  Gmail thread ID
+</ParamField>
+
+### reply()
+
+Reply to a thread.
+
+```javascript
+mail.reply(body, options)
+```
+
+<ParamField path="body" type="string" required>
+  Reply message body
+</ParamField>
+
+<ParamField path="options" type="object">
+  Additional options for the reply
+</ParamField>
+
+**Example:**
+
+```javascript
+const mail = new GmailBuilder();
+
+mail
+  .thread("THREAD_ID")
+  .reply("Thank you for your message.");
+```
+
+### forward()
+
+Forward a thread to another recipient.
+
+```javascript
+mail.forward(to, options)
+```
+
+<ParamField path="to" type="string" required>
+  Email address to forward to
+</ParamField>
+
+<ParamField path="options" type="object">
+  Additional options for forwarding
+</ParamField>
+
+**Example:**
+
+```javascript
+const mail = new GmailBuilder();
+
+mail
+  .thread("THREAD_ID")
+  .forward("another@example.com", { 
+    cc: "manager@example.com" 
+  });
+```
+
+## Thread Search
+
+### searchThreads()
+
+Search for email threads.
+
+```javascript
+mail.searchThreads(query, max)
+```
+
+<ParamField path="query" type="string" required>
+  Gmail search query
+</ParamField>
+
+<ParamField path="max" type="number" default={100}>
+  Maximum number of threads to return
+</ParamField>
+
+**Example:**
+
+```javascript
+const mail = new GmailBuilder();
+
+// Search for unread emails from a specific sender
+const threads = mail.searchThreads(
+  "from:client@example.com is:unread", 
+  20
+);
+```
+
+### getThread()
+
+Get a specific thread by ID.
+
+```javascript
+mail.getThread(threadId)
+```
+
+<ParamField path="threadId" type="string" required>
+  Gmail thread ID
+</ParamField>
+
+## Complete Examples
+
+### Simple Email
+
+```javascript
+function sendWelcomeEmail(userEmail, userName) {
+  const mail = new GmailBuilder();
+
+  mail
+    .to(userEmail)
+    .subject("Welcome to Our Service!")
+    .body(`Hi ${userName},\n\nWelcome to our platform!`)
+    .send();
+}
+```
+
+### HTML Email with Attachments
+
+```javascript
+function sendDailyReport(recipients, reportFileId) {
+  const mail = new GmailBuilder();
+  const logo = DriveApp.getFileById("LOGO_ID").getBlob();
+
+  mail
+    .to(recipients)
+    .cc("manager@example.com")
+    .subject("Daily Report - " + new Date().toLocaleDateString())
+    .body("Please see the attached daily report.")
+    .html(`
+      <img src="cid:logo" style="width: 150px;" />
+      <h1>Daily Report</h1>
+      <p>Please review the attached report for today's metrics.</p>
+    `)
+    .inline("logo", logo)
+    .attach(reportFileId)
+    .send();
+}
+```
+
+### Model Integration - Notifications
+
+```javascript
+class Order extends Model {
+  static _table = "Orders";
+
+  sendConfirmation() {
+    const customer = this.customer(); // Relationship method
+    
+    const mail = new GmailBuilder();
+    
+    mail
+      .to(customer.email)
+      .subject(`Order Confirmation #${this.id}`)
+      .body(`
+        Thank you for your order!
+        
+        Order ID: ${this.id}
+        Total: $${this.total}
+        
+        We'll send you updates as your order is processed.
+      `)
+      .html(`
+        <h2>Thank you for your order!</h2>
+        <p><strong>Order ID:</strong> ${this.id}</p>
+        <p><strong>Total:</strong> $${this.total}</p>
+        <p>We'll send you updates as your order is processed.</p>
+      `)
+      .send();
+  }
+}
+
+Order.use(db);
+
+// Usage
+const order = Order.create({
+  customer_id: 1,
+  total: 99.99,
+  status: "pending"
+});
+
+order.sendConfirmation();
+```
+
+### Automated Response System
+
+```javascript
+function processIncomingEmails() {
+  const mail = new GmailBuilder();
+  
+  // Search for unread emails with specific label
+  const threads = mail.searchThreads("label:support is:unread", 50);
+  
+  threads.forEach(thread => {
+    const messages = thread.getMessages();
+    const firstMessage = messages[0];
+    
+    // Auto-reply
+    mail
+      .thread(thread.getId())
+      .reply(`
+        Thank you for contacting support!
+        
+        Your ticket has been received and will be reviewed shortly.
+        Reference: ${thread.getId()}
+      `);
+    
+    // Mark as read and add processed label
+    thread.markRead();
+    thread.addLabel(GmailApp.getUserLabelByName("Processed"));
+  });
+}
+```
+
+## Best Practices
+
+<Note>
+  **DO**: Always provide both plain text and HTML versions
+  
+  ```javascript
+  mail
+    .body("Plain text version")
+    .html("<p>HTML version</p>");
+  ```
+</Note>
+
+<Note>
+  **DO**: Use descriptive subject lines
+  
+  ```javascript
+  // ✅ Good
+  mail.subject("Order #1234 Confirmation");
+  
+  // ❌ Bad
+  mail.subject("Notification");
+  ```
+</Note>
+
+<Note>
+  **DO**: Centralize email logic in services or models
+  
+  ```javascript
+  // ✅ Good - in a service/model method
+  class EmailService {
+    static sendWelcome(user) {
+      return new GmailBuilder()
+        .to(user.email)
+        .subject("Welcome!")
+        .body("...")
+        .send();
+    }
+  }
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Send emails without recipients
+  
+  ```javascript
+  // ❌ Throws error: Recipient (to) required
+  new GmailBuilder()
+    .subject("No recipient")
+    .send();
+  
+  // ✅ Correct
+  new GmailBuilder()
+    .to("user@example.com")
+    .subject("Has recipient")
+    .send();
+  ```
+</Note>
+
+<Note>
+  **DON'T**: Mix business logic with email construction
+  
+  Keep the logic of when/why to send separate from how to construct the email.
+</Note>
+
+## Method Summary
+
+| Category | Methods |
+|----------|--------|
+| **Recipients** | `to()`, `cc()`, `bcc()` |
+| **Content** | `subject()`, `body()`, `html()`, `option()` |
+| **Attachments** | `attach()`, `inline()` |
+| **Actions** | `send()`, `draft()` |
+| **Threads** | `thread()`, `reply()`, `forward()`, `searchThreads()`, `getThread()` |

@@ -1,0 +1,220 @@
+---
+title: 'BelongsTo'
+description: 'Define many-to-one (N:1) relationships where multiple records belong to a single parent record'
+icon: 'arrow-left'
+---
+
+## Overview
+
+The `belongsTo` relationship represents a **many-to-one (N:1)** association where the current model belongs to another model. For example, a Post belongs to a User.
+
+This is the inverse of `hasOne` and `hasMany` relationships.
+
+## Method Signature
+
+```javascript
+belongsTo(RelatedClass, foreignKey = null, ownerKey = 'id')
+```
+
+<ParamField path="RelatedClass" type="Model" required>
+  The related Model class that this model belongs to
+</ParamField>
+
+<ParamField path="foreignKey" type="string" default="{RelatedClass._table}_id">
+  The foreign key column in the current model that references the related model.
+  
+  If not specified, defaults to the related model's table name + `_id` (e.g., `user_id` for a User model).
+</ParamField>
+
+<ParamField path="ownerKey" type="string" default="id">
+  The primary key column in the related model that the foreign key references.
+  
+  Typically the `id` column of the parent model.
+</ParamField>
+
+## Basic Usage
+
+### Define the Relationship
+
+```javascript
+class Post extends Model {
+  static _table = "Posts";
+
+  author() {
+    return this.belongsTo(User, "user_id", "id");
+  }
+}
+```
+
+### Query with Eager Loading
+
+Use `with()` to load the relationship and avoid N+1 queries:
+
+```javascript
+// Load posts with their authors
+const posts = Post.with("author").get();
+
+posts.each(post => {
+  Logger.log(post.title);
+  Logger.log(post.author.name);  // Author is already loaded
+});
+```
+
+### Without Eager Loading (Not Recommended)
+
+```javascript
+// ❌ Creates N+1 queries
+const post = Post.first();
+const author = User.find(post.user_id);  // Additional query
+```
+
+## Examples
+
+### Post Belongs to User
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+}
+
+class Post extends Model {
+  static _table = "Posts";
+  
+  author() {
+    return this.belongsTo(User, "user_id", "id");
+  }
+}
+
+// Usage
+const posts = Post.with("author").where("published", true).get();
+
+posts.each(post => {
+  Logger.log(`${post.title} by ${post.author.name}`);
+});
+```
+
+### Comment Belongs to Post and User
+
+```javascript
+class Comment extends Model {
+  static _table = "Comments";
+  
+  post() {
+    return this.belongsTo(Post, "post_id");
+  }
+  
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+
+// Load multiple relationships
+const comments = Comment.with("post", "author").get();
+
+comments.each(comment => {
+  Logger.log(`${comment.author.name} commented on "${comment.post.title}"`);
+  Logger.log(`Comment: ${comment.text}`);
+});
+```
+
+### Custom Foreign Key
+
+```javascript
+class Order extends Model {
+  static _table = "Orders";
+  
+  customer() {
+    // Custom foreign key: customer_id instead of user_id
+    return this.belongsTo(User, "customer_id", "id");
+  }
+}
+```
+
+## Return Value
+
+When eager loaded with `with()`, the relationship property will contain:
+
+- The related **Model instance** if a match is found
+- `null` if no related record exists
+
+```javascript
+const post = Post.with("author").first();
+
+if (post.author) {
+  Logger.log(post.author.name);  // Model instance
+} else {
+  Logger.log("No author found");
+}
+```
+
+## Database Schema
+
+For a `belongsTo` relationship, the **foreign key** is stored in the **current model's table**:
+
+```
+Users table:
+┌────┬──────────┬─────────────────┐
+│ id │ name     │ email           │
+├────┼──────────┼─────────────────┤
+│ 1  │ John Doe │ john@example.com│
+└────┴──────────┴─────────────────┘
+
+Posts table:
+┌────┬─────────┬───────────────┬─────────┐
+│ id │ user_id │ title         │ body    │
+├────┼─────────┼───────────────┼─────────┤
+│ 1  │ 1       │ First Post    │ ...     │
+│ 2  │ 1       │ Second Post   │ ...     │
+└────┴─────────┴───────────────┴─────────┘
+```
+
+The `user_id` in Posts references the `id` in Users.
+
+## Nested Relationships
+
+Load relationships of relationships using dot notation:
+
+```javascript
+// Load comments with their post and the post's author
+const comments = Comment.with("post.author").get();
+
+comments.each(comment => {
+  Logger.log(`Comment on "${comment.post.title}"`);
+  Logger.log(`Post author: ${comment.post.author.name}`);
+});
+```
+
+## Performance Tips
+
+<Tip>
+  Always use eager loading with `with()` to avoid the N+1 query problem. This loads all related records in a single additional query.
+</Tip>
+
+### Good: Eager Loading (2 queries)
+
+```javascript
+// ✅ Efficient: 2 queries total (Posts + Users)
+const posts = Post.with("author").get();
+
+posts.each(post => {
+  Logger.log(post.author.name);  // No additional query
+});
+```
+
+### Bad: N+1 Problem (N+1 queries)
+
+```javascript
+// ❌ Inefficient: 1 + N queries (1 for posts, N for each author)
+const posts = Post.all();
+
+posts.each(post => {
+  const author = User.find(post.user_id);  // Additional query per post!
+  Logger.log(author.name);
+});
+```
+
+## Related Methods
+
+- [HasMany](/api/has-many) - Define one-to-many relationships (inverse of belongsTo)
+- [HasOne](/api/has-one) - Define one-to-one relationships
+- [ManyToMany](/api/many-to-many) - Define many-to-many relationships with pivot tables

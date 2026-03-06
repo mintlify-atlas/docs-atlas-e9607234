@@ -1,0 +1,796 @@
+---
+title: Models
+description: Complete guide to Models, configuration, CRUD operations, and advanced features
+---
+
+Models are the heart of ServiceSQL's ORM. They represent tables/sheets and encapsulate business logic, validations, relationships, and data transformations.
+
+<Note>
+  **Apps Script Compatibility:** Apps Script doesn't support static field initializers inside class declarations. Always assign static properties AFTER declaring the class:
+  
+  ```javascript
+  class User extends Model {}
+  User._table = "Users";
+  User._timestamps = true;
+  ```
+</Note>
+
+## Defining a Model
+
+Create a model by extending the `Model` class and configuring it with static properties:
+
+```javascript
+class User extends Model {}
+
+// Initialize database connection
+const db = APPSQL.init({ spreadsheetId: "YOUR_SPREADSHEET_ID" });
+
+// Configure model properties
+User._table = "Users";
+User._primaryKey = "id";
+User._timestamps = true;
+User._fillable = ["name", "email", "age"];
+User._casts = {
+  age: "int",
+  verified: "bool",
+  metadata: "json",
+  created_at: "date"
+};
+
+// Register the model with the database
+User.use(db);
+```
+
+## Model Configuration
+
+### Static Properties
+
+<ParamField path="_table" type="string" required>
+  Name of the sheet/table this model represents
+</ParamField>
+
+<ParamField path="_primaryKey" type="string" default="id">
+  Primary key column name
+</ParamField>
+
+<ParamField path="_fillable" type="array" default="null">
+  Array of columns allowed for mass assignment. `null` means all columns are fillable (not recommended)
+</ParamField>
+
+<ParamField path="_timestamps" type="boolean" default="false">
+  Automatically manage `created_at` and `updated_at` timestamps
+</ParamField>
+
+<ParamField path="_casts" type="object" default="{}">
+  Type casting configuration for automatic data conversion
+</ParamField>
+
+<ParamField path="_dates" type="array" default="['created_at', 'updated_at', 'deleted_at']">
+  Columns that should be treated as dates
+</ParamField>
+
+<ParamField path="_softDeletes" type="boolean" default="false">
+  Enable soft delete functionality
+</ParamField>
+
+<ParamField path="_deletedAt" type="string" default="deleted_at">
+  Column name for soft delete timestamp
+</ParamField>
+
+### Complete Configuration Example
+
+```javascript
+class Post extends Model {
+  // Relationship methods
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+
+  comments() {
+    return this.hasMany(Comment);
+  }
+
+  tags() {
+    return this.manyToMany(Tag, "PostTag");
+  }
+}
+
+// Configure static properties
+Post._table = "Posts";
+Post._primaryKey = "id";
+Post._timestamps = true;
+Post._softDeletes = true;
+Post._fillable = ["title", "body", "user_id", "published"];
+Post._casts = {
+  published: "bool",
+  views: "int",
+  metadata: "json",
+  published_at: "date"
+};
+
+Post.use(db);
+```
+
+## Querying Records
+
+### Retrieve All Records
+
+```javascript
+const users = User.all();
+
+users.each(user => {
+  Logger.log(user.name);
+});
+```
+
+### Find by Primary Key
+
+<Tabs>
+  <Tab title="find()">
+    ```javascript
+    const user = User.find(123);
+    
+    if (user) {
+      Logger.log(user.name);
+    }
+    ```
+    Returns `null` if not found.
+  </Tab>
+  <Tab title="findOrFail()">
+    ```javascript
+    try {
+      const user = User.findOrFail(123);
+      Logger.log(user.name);
+    } catch (e) {
+      Logger.log("User not found");
+    }
+    ```
+    Throws an error if not found.
+  </Tab>
+</Tabs>
+
+### Where Queries
+
+```javascript
+// Implicit equality operator
+const admins = User.where("role", "admin").get();
+
+// Explicit operator
+const adults = User.where("age", ">=", 18).get();
+
+// Multiple conditions (AND)
+const users = User.where("country", "ES")
+                  .where("verified", true)
+                  .where("age", ">=", 18)
+                  .get();
+```
+
+### First Record
+
+```javascript
+const user = User.where("email", "john@example.com").first();
+```
+
+### Query Builder
+
+```javascript
+const users = User.query()
+  .where("status", "active")
+  .orderBy("created_at", "desc")
+  .limit(10)
+  .get();
+```
+
+## Creating Records
+
+### Using create()
+
+```javascript
+const user = User.create({
+  name: "John Doe",
+  email: "john@example.com",
+  age: 30
+});
+
+Logger.log(user.id);  // Auto-generated ID
+```
+
+<Note>
+  The `create()` method automatically saves the record and returns the model instance with the generated ID.
+</Note>
+
+### With Timestamps
+
+```javascript
+User._timestamps = true;
+
+const user = User.create({
+  name: "John"
+});
+
+// Automatically adds:
+// created_at: "2025-01-15T10:30:00.000Z"
+// updated_at: "2025-01-15T10:30:00.000Z"
+```
+
+### Using new + save()
+
+```javascript
+const user = new User({
+  name: "Jane",
+  email: "jane@example.com"
+});
+
+user.age = 25;
+user.save();
+
+Logger.log(user.id);  // ID assigned after save()
+```
+
+## Updating Records
+
+### save() - Save Changes
+
+```javascript
+const user = User.find(123);
+user.name = "New Name";
+user.email = "newemail@example.com";
+user.save();
+```
+
+### update() - Update with Object
+
+```javascript
+const user = User.find(123);
+user.update({
+  name: "Updated Name",
+  age: 31
+});
+```
+
+### fill() - Fill Attributes Without Saving
+
+```javascript
+const user = User.find(123);
+user.fill({
+  name: "Temp Name",
+  age: 99
+});
+// Changes NOT saved until calling save()
+user.save();
+```
+
+### Bulk Update
+
+```javascript
+// Update multiple records
+User.where("status", "pending")
+    .query()
+    .update({ status: "active" });
+```
+
+## Deleting Records
+
+### delete() - Delete Instance
+
+```javascript
+const user = User.find(123);
+user.delete();
+```
+
+### Bulk Delete
+
+```javascript
+// Delete inactive users
+User.where("status", "inactive")
+    .query()
+    .delete();
+```
+
+### deleteById()
+
+```javascript
+User.query().deleteById(123);
+```
+
+## Timestamps
+
+Automatic management of `created_at` and `updated_at` columns:
+
+```javascript
+User._timestamps = true;
+
+// On create
+const user = User.create({ name: "John" });
+// Automatically adds:
+// created_at: "2025-01-15T10:00:00.000Z"
+// updated_at: "2025-01-15T10:00:00.000Z"
+
+// On update
+user.name = "Jane";
+user.save();
+// Automatically updates:
+// updated_at: "2025-01-15T10:05:00.000Z"
+```
+
+## Mass Assignment Protection
+
+Protect your model from unwanted attribute assignment with `_fillable`:
+
+<CodeGroup>
+```javascript Without Protection (Dangerous)
+class User extends Model {}
+User._table = "Users";
+// No _fillable defined = ALL fields assignable
+
+const data = req.body;  // { name: "John", role: "admin" }
+User.create(data);  // ⚠️ Could assign role="admin" without validation
+```
+
+```javascript With Protection (Safe)
+class User extends Model {}
+User._table = "Users";
+User._fillable = ["name", "email", "age"];  // Only these fields
+
+const user = User.create({
+  name: "John",
+  email: "john@example.com",
+  role: "admin"  // ❌ Ignored (not in fillable)
+});
+
+// To assign non-fillable fields:
+user.role = "admin";  // ✅ Direct assignment
+user.save();
+```
+</CodeGroup>
+
+## Type Casting
+
+Automatic type conversion when reading/writing data:
+
+```javascript
+User._casts = {
+  age: "int",
+  verified: "bool",
+  metadata: "json",
+  settings: "array",
+  birthdate: "date",
+  created_at: "datetime",
+  score: "float"
+};
+
+const user = User.find(1);
+Logger.log(typeof user.age);        // "number"
+Logger.log(typeof user.verified);   // "boolean"
+Logger.log(typeof user.metadata);   // "object"
+
+// When saving, JSON objects are automatically stringified
+user.metadata = { theme: "dark", lang: "es" };
+user.save();  // Saved as JSON string in sheet
+```
+
+### Available Cast Types
+
+| Cast Type | Description | Example |
+|-----------|-------------|--------|
+| `int`, `integer` | Integer number | `"25"` → `25` |
+| `float`, `double` | Decimal number | `"3.14"` → `3.14` |
+| `bool`, `boolean` | Boolean | `"true"` → `true` |
+| `string` | String | `123` → `"123"` |
+| `json` | JSON object | `'{"a":1}'` → `{a:1}` |
+| `array` | Array | `'[1,2,3]'` → `[1,2,3]` |
+| `date`, `datetime` | Date object | `"2025-01-15"` → `Date` |
+| `dmy` | dd/mm/yyyy format | `Date` → `"15/01/2025"` |
+| `dmyhms` | Full datetime | `Date` → `"15/01/2025 10:30:00"` |
+
+## Accessors and Mutators
+
+### Accessors (Getters)
+
+Transform attributes when reading:
+
+```javascript
+class User extends Model {
+  // Accessor: get{Attribute}Attribute
+  getFullNameAttribute(value) {
+    return `${this.first_name} ${this.last_name}`;
+  }
+
+  getEmailAttribute(value) {
+    return value.toLowerCase();
+  }
+
+  getAgeInYearsAttribute(value) {
+    return `${this.age} años`;
+  }
+}
+
+const user = User.find(1);
+Logger.log(user.full_name);     // "John Doe"
+Logger.log(user.email);         // "john@example.com" (lowercase)
+Logger.log(user.age_in_years);  // "30 años"
+```
+
+### Mutators (Setters)
+
+Transform attributes when writing:
+
+```javascript
+class User extends Model {
+  // Mutator: set{Attribute}Attribute
+  setNameAttribute(value) {
+    return value.trim().toUpperCase();
+  }
+
+  setEmailAttribute(value) {
+    return value.toLowerCase().trim();
+  }
+
+  setPasswordAttribute(value) {
+    // Hash password before saving
+    return hashPassword(value);
+  }
+}
+
+const user = new User();
+user.name = "  john doe  ";
+user.email = " JOHN@EXAMPLE.COM ";
+user.save();
+
+// Saved in sheet as:
+// name: "JOHN DOE"
+// email: "john@example.com"
+```
+
+## Soft Deletes
+
+Mark records as deleted without actually removing them:
+
+```javascript
+Post._softDeletes = true;
+Post._deletedAt = "deleted_at";
+Post._timestamps = true;
+
+// Delete (soft delete)
+const post = Post.find(1);
+post.delete();  // Sets deleted_at to current timestamp
+
+// Queries exclude soft-deleted by default
+const posts = Post.all();  // Doesn't include deleted posts
+
+// Include deleted records
+const allPosts = Post.withTrashed().get();
+
+// Only deleted records
+const deletedPosts = Post.onlyTrashed().get();
+
+// Restore soft-deleted record
+const post = Post.onlyTrashed().where("id", 1).first();
+if (post) {
+  post.deleted_at = null;
+  post.save();
+}
+```
+
+## Model Boot
+
+The `boot()` method executes once per model class when `Model.use(db)` is called:
+
+```javascript
+class User extends Model {
+  static boot() {
+    // Register global observers
+    this.observe({
+      created(user) {
+        Logger.log(`User created: ${user.id}`);
+        sendWelcomeEmail(user.email);
+      },
+      updated(user) {
+        Logger.log(`User updated: ${user.id}`);
+      }
+    });
+
+    Logger.log("User model booted");
+  }
+}
+
+User._table = "Users";
+User.use(db);  // Calls boot() internally (only once)
+```
+
+<Warning>
+  Keep `boot()` idempotent and lightweight. Avoid heavy operations or state mutations.
+</Warning>
+
+## Scopes
+
+Encapsulate common query filters in reusable methods:
+
+```javascript
+class User extends Model {
+  // Scope: scope{Name}
+  static scopeActive(query) {
+    return query.where("status", "active");
+  }
+
+  static scopeVerified(query) {
+    return query.where("verified", true);
+  }
+
+  static scopeCreatedAfter(query, dateIso) {
+    return query.where("created_at", ">=", dateIso);
+  }
+}
+
+User._table = "Users";
+User.use(db);
+
+// Use scopes
+const users = User.scope("active", "verified").get();
+
+// With parameters
+const recent = User.query()
+  .scope("active")
+  .scope("createdAfter", "2025-01-01T00:00:00.000Z")
+  .get();
+```
+
+### Scopes with Relationships
+
+```javascript
+class Post extends Model {
+  static scopePublished(query) {
+    return query.where("published", true);
+  }
+
+  static scopeWithMinViews(query, minViews) {
+    return query.where("views", ">=", minViews);
+  }
+
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+
+const hotPosts = Post.scope("published", "withMinViews", 100)
+  .with("author")
+  .orderBy("created_at", "desc")
+  .get();
+```
+
+## Observers and Hooks
+
+Execute code at specific points in the model lifecycle:
+
+### Observer Class
+
+```javascript
+class UserObserver {
+  creating(user) {
+    Logger.log(`Creating user: ${user.name}`);
+    // Validations, logging, etc.
+  }
+
+  created(user) {
+    Logger.log(`User created: ${user.id}`);
+    sendWelcomeEmail(user.email);
+  }
+
+  updating(user) {
+    Logger.log(`Updating user: ${user.id}`);
+  }
+
+  updated(user) {
+    Logger.log(`User updated: ${user.id}`);
+    clearUserCache(user.id);
+  }
+
+  deleting(user) {
+    Logger.log(`Deleting user: ${user.id}`);
+  }
+
+  deleted(user) {
+    Logger.log(`User deleted: ${user.id}`);
+  }
+}
+
+// Register observer
+User.observe(new UserObserver());
+```
+
+### Available Events
+
+| Event | When Fired |
+|-------|------------|
+| `creating` | Before creating a record |
+| `created` | After creating a record |
+| `updating` | Before updating a record |
+| `updated` | After updating a record |
+| `deleting` | Before deleting a record |
+| `deleted` | After deleting a record |
+
+### Function Observer
+
+```javascript
+User.observe((event, user) => {
+  Logger.log(`Event: ${event}, User: ${user.id}`);
+
+  switch(event) {
+    case "created":
+      sendWelcomeEmail(user.email);
+      break;
+    case "updated":
+      clearCache(user.id);
+      break;
+    case "deleted":
+      logAudit("delete", user);
+      break;
+  }
+});
+```
+
+## Serialization
+
+Convert model instances to plain objects for API responses:
+
+```javascript
+class User extends Model {
+  toJSON() {
+    const out = {};
+    for (const k in this) {
+      if (!k.startsWith("_") && typeof this[k] !== "function") {
+        out[k] = this[k];
+      }
+    }
+    return out;
+  }
+}
+
+const user = User.find(1);
+const json = JSON.stringify(user.toJSON());
+
+// Result:
+// {"id":1,"name":"John","email":"john@example.com","age":30}
+```
+
+### With Relationships
+
+```javascript
+const user = User.with("posts").first();
+const json = user.toJSON();
+
+// Includes relationships:
+// {
+//   id: 1,
+//   name: "John",
+//   posts: [...]
+// }
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Define _fillable" icon="shield-check">
+    Always specify fillable fields for security
+    ```javascript
+    User._fillable = ["name", "email", "age"];
+    ```
+  </Card>
+  
+  <Card title="Use Timestamps" icon="clock">
+    Enable automatic audit trails
+    ```javascript
+    User._timestamps = true;
+    ```
+  </Card>
+  
+  <Card title="Leverage Casts" icon="wand-magic-sparkles">
+    Automatic type conversion
+    ```javascript
+    User._casts = { age: "int", verified: "bool" };
+    ```
+  </Card>
+  
+  <Card title="Use Scopes" icon="filter">
+    Reusable query logic
+    ```javascript
+    User.scope("active", "verified").get();
+    ```
+  </Card>
+</CardGroup>
+
+### Do's and Don'ts
+
+<Tabs>
+  <Tab title="Do">
+    **Use Eager Loading**
+    ```javascript
+    // ✅ Efficient - 2 queries
+    const posts = Post.with("author", "comments").get();
+    ```
+    
+    **Define Fillable**
+    ```javascript
+    // ✅ Secure
+    User._fillable = ["name", "email"];
+    ```
+    
+    **Use Scopes**
+    ```javascript
+    // ✅ Reusable
+    const users = User.scope("active").get();
+    ```
+  </Tab>
+  
+  <Tab title="Don't">
+    **Avoid N+1 Queries**
+    ```javascript
+    // ❌ N+1 problem
+    const posts = Post.all();
+    posts.each(post => {
+      const author = User.find(post.user_id);
+    });
+    ```
+    
+    **Don't Modify Static Props After Init**
+    ```javascript
+    // ❌ Bad
+    User.use(db);
+    User._table = "NewTable";
+    ```
+    
+    **Always Validate**
+    ```javascript
+    // ❌ No validation
+    user.email = userInput;
+    user.save();
+    ```
+  </Tab>
+</Tabs>
+
+## Complete Example
+
+```javascript
+class User extends Model {
+  // Scopes
+  static scopeVerified(query) {
+    return query.where("verified", true);
+  }
+
+  // Relationships
+  posts() {
+    return this.hasMany(Post);
+  }
+
+  // Mutators
+  setPasswordAttribute(value) {
+    return hashPassword(value);
+  }
+
+  // Accessors
+  getFullNameAttribute() {
+    return this.name.toUpperCase();
+  }
+}
+
+User._table = "Users";
+User._timestamps = true;
+User._fillable = ["name", "email", "password"];
+User._casts = { verified: "bool" };
+User.use(db);
+
+// Usage
+const user = User.create({
+  name: "John Doe",
+  email: "john@example.com",
+  password: "secret123"
+});
+
+const verifiedUsers = User.scope("verified")
+  .with("posts")
+  .get();
+
+verifiedUsers.each(user => {
+  Logger.log(`${user.full_name} has ${user.posts.count()} posts`);
+});
+```

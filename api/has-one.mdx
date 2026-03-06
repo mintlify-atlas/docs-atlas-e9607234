@@ -1,0 +1,338 @@
+---
+title: 'HasOne'
+description: 'Define one-to-one (1:1) relationships where a parent record has exactly one related record'
+icon: 'arrow-right-arrow-left'
+---
+
+## Overview
+
+The `hasOne` relationship represents a **one-to-one (1:1)** association where a single parent record has exactly one related record. For example, a User has one Profile.
+
+This is similar to `hasMany`, but returns a single model instance instead of a collection.
+
+## Method Signature
+
+```javascript
+hasOne(RelatedClass, foreignKey = null, localKey = 'id')
+```
+
+<ParamField path="RelatedClass" type="Model" required>
+  The related Model class that belongs to this model
+</ParamField>
+
+<ParamField path="foreignKey" type="string" default="{CurrentModel._table}_id">
+  The foreign key column in the related model that references this model.
+  
+  If not specified, defaults to the current model's table name + `_id` (e.g., `user_id` if called from User model).
+</ParamField>
+
+<ParamField path="localKey" type="string" default="id">
+  The primary key column in the current model that the foreign key references.
+  
+  Typically the `id` column.
+</ParamField>
+
+## Basic Usage
+
+### Define the Relationship
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+
+  profile() {
+    return this.hasOne(Profile, "user_id", "id");
+  }
+}
+```
+
+### Query with Eager Loading
+
+Use `with()` to load the relationship efficiently:
+
+```javascript
+// Load users with their profiles
+const users = User.with("profile").get();
+
+users.each(user => {
+  if (user.profile) {
+    Logger.log(`${user.name} - Bio: ${user.profile.bio}`);
+  } else {
+    Logger.log(`${user.name} has no profile`);
+  }
+});
+```
+
+## Return Value
+
+When eager loaded with `with()`, the relationship property will contain:
+
+- The related **Model instance** if a match is found
+- `null` if no related record exists
+
+```javascript
+const user = User.with("profile").first();
+
+if (user.profile) {
+  Logger.log(user.profile.bio);  // Model instance
+  Logger.log(user.profile.avatar);
+} else {
+  Logger.log("No profile found");
+}
+```
+
+## Examples
+
+### User Has One Profile
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  
+  profile() {
+    return this.hasOne(Profile, "user_id");
+  }
+}
+
+class Profile extends Model {
+  static _table = "Profiles";
+  
+  user() {
+    return this.belongsTo(User, "user_id");
+  }
+}
+
+// Usage
+const users = User.with("profile").get();
+
+users.each(user => {
+  if (user.profile) {
+    Logger.log(`Name: ${user.name}`);
+    Logger.log(`Bio: ${user.profile.bio}`);
+    Logger.log(`Location: ${user.profile.location}`);
+  }
+});
+```
+
+### Order Has One Invoice
+
+```javascript
+class Order extends Model {
+  static _table = "Orders";
+  
+  invoice() {
+    return this.hasOne(Invoice, "order_id");
+  }
+}
+
+class Invoice extends Model {
+  static _table = "Invoices";
+  
+  order() {
+    return this.belongsTo(Order, "order_id");
+  }
+}
+
+// Generate invoice report
+const orders = Order.with("invoice").get();
+
+orders.each(order => {
+  if (order.invoice) {
+    Logger.log(`Order #${order.id}: Invoice #${order.invoice.invoice_number}`);
+    Logger.log(`Amount: $${order.invoice.total}`);
+  } else {
+    Logger.log(`Order #${order.id}: No invoice generated`);
+  }
+});
+```
+
+### Nested Relationships
+
+```javascript
+// User has one Profile, Profile has one Address
+class User extends Model {
+  static _table = "Users";
+  
+  profile() {
+    return this.hasOne(Profile, "user_id");
+  }
+}
+
+class Profile extends Model {
+  static _table = "Profiles";
+  
+  address() {
+    return this.hasOne(Address, "profile_id");
+  }
+}
+
+// Load nested relationships
+const users = User.with("profile.address").get();
+
+users.each(user => {
+  if (user.profile?.address) {
+    Logger.log(`${user.name} lives in ${user.profile.address.city}`);
+  }
+});
+```
+
+## Database Schema
+
+For a `hasOne` relationship, the **foreign key** is stored in the **related model's table**:
+
+```
+Users table:
+┌────┬──────────┬─────────────────┐
+│ id │ name     │ email           │
+├────┼──────────┼─────────────────┤
+│ 1  │ John Doe │ john@example.com│
+│ 2  │ Jane Doe │ jane@example.com│
+└────┴──────────┴─────────────────┘
+
+Profiles table:
+┌────┬─────────┬──────────────────┬──────────┐
+│ id │ user_id │ bio              │ avatar   │
+├────┼─────────┼──────────────────┼──────────┤
+│ 1  │ 1       │ Software dev     │ john.jpg │
+│ 2  │ 2       │ Designer         │ jane.jpg │
+└────┴─────────┴──────────────────┴──────────┘
+```
+
+Each user has exactly one profile (enforced at the application level).
+
+## HasOne vs HasMany
+
+The main differences:
+
+| Feature | HasOne | HasMany |
+|---------|--------|----------|
+| Cardinality | 1:1 | 1:N |
+| Return type | Model instance or `null` | Collection |
+| Use case | Single related record | Multiple related records |
+| Example | User → Profile | User → Posts |
+
+```javascript
+class User extends Model {
+  // Returns a single Profile instance or null
+  profile() {
+    return this.hasOne(Profile, "user_id");
+  }
+  
+  // Returns a Collection of Post instances
+  posts() {
+    return this.hasMany(Post, "user_id");
+  }
+}
+
+const user = User.with("profile", "posts").first();
+
+// hasOne: single object or null
+Logger.log(user.profile.bio);  // Direct property access
+
+// hasMany: Collection
+Logger.log(user.posts.count());  // Collection methods
+```
+
+## Multiple HasOne Relationships
+
+A model can have multiple one-to-one relationships:
+
+```javascript
+class User extends Model {
+  static _table = "Users";
+  
+  profile() {
+    return this.hasOne(Profile, "user_id");
+  }
+  
+  settings() {
+    return this.hasOne(UserSettings, "user_id");
+  }
+  
+  subscription() {
+    return this.hasOne(Subscription, "user_id");
+  }
+}
+
+// Load all one-to-one relationships
+const user = User.with("profile", "settings", "subscription").first();
+
+Logger.log(user.profile.bio);
+Logger.log(user.settings.theme);
+Logger.log(user.subscription.plan);
+```
+
+## Handling Null Values
+
+Always check if the related record exists before accessing its properties:
+
+```javascript
+const user = User.with("profile").first();
+
+// ✅ Good: Check before access
+if (user.profile) {
+  Logger.log(user.profile.bio);
+} else {
+  Logger.log("No profile found");
+}
+
+// ✅ Good: Use optional chaining
+Logger.log(user.profile?.bio || "No bio");
+
+// ❌ Bad: Direct access without checking
+Logger.log(user.profile.bio);  // Error if profile is null!
+```
+
+## Performance Tips
+
+<Tip>
+  Use eager loading with `with()` to load the related record efficiently in a single additional query.
+</Tip>
+
+### Good: Eager Loading (2 queries)
+
+```javascript
+// ✅ Efficient: 2 queries (Users + Profiles)
+const users = User.with("profile").get();
+
+users.each(user => {
+  if (user.profile) {
+    Logger.log(user.profile.bio);  // No additional query
+  }
+});
+```
+
+### Bad: N+1 Problem (N+1 queries)
+
+```javascript
+// ❌ Inefficient: 1 + N queries
+const users = User.all();
+
+users.each(user => {
+  const profile = Profile.where("user_id", user.id).first();  // Query per user!
+  if (profile) {
+    Logger.log(profile.bio);
+  }
+});
+```
+
+## Custom Foreign Keys
+
+Specify custom foreign and local keys when needed:
+
+```javascript
+class Company extends Model {
+  static _table = "Companies";
+  
+  primaryContact() {
+    // Custom keys: contact_id in Users references company_code in Companies
+    return this.hasOne(User, "contact_id", "company_code");
+  }
+}
+```
+
+## Related Methods
+
+- [BelongsTo](/api/belongs-to) - Define many-to-one relationships (inverse of hasOne)
+- [HasMany](/api/has-many) - Define one-to-many relationships
+- [ManyToMany](/api/many-to-many) - Define many-to-many relationships with pivot tables

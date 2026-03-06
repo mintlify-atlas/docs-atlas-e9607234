@@ -1,0 +1,379 @@
+---
+title: 'Table Management'
+description: 'Create, modify, and manage tables and sheets in ServiceSQL'
+---
+
+The `Table` helper in ServiceSQL provides a simple API for managing sheet structures as if they were database tables. This guide covers creating tables, managing columns, and working with table structures.
+
+## Creating Tables
+
+<Steps>
+  <Step title="Initialize the database">
+    First, initialize ServiceSQL with your spreadsheet ID:
+    ```javascript
+    const db = APPSQL.init({ spreadsheetId: "YOUR_SPREADSHEET_ID" });
+    ```
+  </Step>
+
+  <Step title="Get a table reference">
+    Reference a table (sheet) by name:
+    ```javascript
+    const users = db.table("Users");
+    ```
+  </Step>
+
+  <Step title="Create the table with headers">
+    Use `create()` to set up your table structure:
+    ```javascript
+    users.create(["id", "name", "email", "age", "created_at"]);
+    ```
+  </Step>
+</Steps>
+
+### Creating Tables with Options
+
+The `create()` method accepts two parameters:
+- `headers`: Array of column names
+- `overwrite`: Boolean to replace existing structure (default: `false`)
+
+<Warning>
+  Using `overwrite: true` will clear all existing data in the sheet. Use with caution!
+</Warning>
+
+```javascript
+// Create new table
+users.create(["id", "name", "email"]);
+
+// Overwrite existing table (⚠️ deletes all data)
+users.create(["id", "username", "email"], true);
+```
+
+### Ensuring Headers Exist
+
+Use `ensureHeaders()` to create tables only if they don't exist:
+
+```javascript
+// Creates table only if it doesn't exist
+users.ensureHeaders(["id", "name", "email"]);
+
+// Safe for initialization scripts
+function setupDatabase() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  
+  db.table("Users").ensureHeaders(["id", "name", "email", "role"]);
+  db.table("Posts").ensureHeaders(["id", "user_id", "title", "body"]);
+  db.table("Comments").ensureHeaders(["id", "post_id", "text"]);
+}
+```
+
+<Tip>
+  Use `ensureHeaders()` in initialization scripts to safely set up your database schema without accidentally destroying existing data.
+</Tip>
+
+## Managing Headers
+
+### Getting Current Headers
+
+```javascript
+const headers = users.getHeaders();
+Logger.log(headers); // ["id", "name", "email", "age"]
+```
+
+### Changing Headers
+
+The `setHeaders()` method updates column names while preserving data:
+
+```javascript
+// Rename all headers, preserving data
+users.setHeaders(["id", "full_name", "email_address", "age"]);
+
+// With overwrite = true (⚠️ deletes all data)
+users.setHeaders(["new_id", "new_name"], true);
+```
+
+<Note>
+  When `overwrite` is `false`, `setHeaders()` intelligently remaps your data to the new column names.
+</Note>
+
+## Managing Columns
+
+### Adding Columns
+
+Add new columns to the end or at specific positions:
+
+```javascript
+// Add column at the end
+users.addColumn("phone");
+
+// Add column at specific position (index 2)
+users.addColumn("country", 2);
+
+// Result:
+// ┌────┬──────┬─────────┬───────┬─────┬──────┐
+// │ id │ name │ country │ email │ age │phone │
+// └────┴──────┴─────────┴───────┴─────┴──────┘
+```
+
+### Removing Columns
+
+```javascript
+// Remove a column by name
+users.removeColumn("phone");
+```
+
+<Warning>
+  Removing a column permanently deletes all data in that column. This operation cannot be undone.
+</Warning>
+
+### Renaming Columns
+
+Rename columns while preserving all data:
+
+```javascript
+// Rename "name" to "full_name"
+users.renameColumn("name", "full_name");
+
+// The data is preserved during the rename
+const user = users.findById(1);
+Logger.log(user.full_name); // Previously stored "name" value
+```
+
+## Primary Keys
+
+By default, ServiceSQL uses `"id"` as the primary key. You can change this:
+
+```javascript
+// Default primary key
+users.setPrimaryKey("id");
+
+// Change to another column
+users.setPrimaryKey("uuid");
+
+// Now findById, updateById, and deleteById use "uuid"
+const user = users.findById("abc-123-def-456");
+```
+
+## Table Utilities
+
+### Truncating Tables
+
+Remove all data rows but keep the header row:
+
+```javascript
+// Clears all data, keeps structure
+users.truncate();
+```
+
+### Dropping Tables
+
+Delete the entire sheet:
+
+```javascript
+// ⚠️ Completely removes the sheet
+users.drop();
+```
+
+<Warning>
+  `drop()` permanently deletes the entire sheet. Always confirm before using this operation in production.
+</Warning>
+
+## Practical Examples
+
+### Database Setup
+
+```javascript
+function setupDatabase() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+
+  // Create all tables with proper structure
+  db.table("Users").create([
+    "id", "name", "email", "role", "created_at"
+  ]);
+  
+  db.table("Posts").create([
+    "id", "user_id", "title", "body", "published", "created_at"
+  ]);
+  
+  db.table("Comments").create([
+    "id", "post_id", "user_id", "text", "created_at"
+  ]);
+  
+  db.table("Tags").create(["id", "name"]);
+  
+  db.table("PostTag").create(["post_id", "tag_id"]);
+
+  Logger.log("Database created successfully");
+}
+```
+
+### Schema Evolution
+
+```javascript
+function evolveSchema() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const users = db.table("Users");
+
+  // Add new columns for feature expansion
+  users.addColumn("avatar_url");
+  users.addColumn("is_verified");
+  users.addColumn("last_login");
+
+  // Rename for clarity
+  users.renameColumn("name", "full_name");
+
+  // Verify the new structure
+  const headers = users.getHeaders();
+  Logger.log("Updated structure:", headers);
+}
+```
+
+### Data Migration
+
+```javascript
+function migrateToNewSchema() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+
+  // Get data from old table
+  const oldUsers = db.table("UsersOld");
+  const oldData = oldUsers.get();
+
+  // Create new table with improved structure
+  const newUsers = db.table("Users");
+  newUsers.create([
+    "id", "full_name", "email", "age", "status", "created_at"
+  ]);
+
+  // Migrate and transform data
+  oldData.forEach(oldUser => {
+    newUsers.insert({
+      id: oldUser.id,
+      full_name: `${oldUser.first_name} ${oldUser.last_name}`,
+      email: oldUser.email.toLowerCase(),
+      age: parseInt(oldUser.age) || 0,
+      status: "active",
+      created_at: new Date().toISOString()
+    });
+  });
+
+  Logger.log(`Migrated ${oldData.length} users`);
+
+  // Optional: remove old table after verification
+  // oldUsers.drop();
+}
+```
+
+### Safe Table Reset
+
+```javascript
+function safeReset() {
+  const db = APPSQL.init({ spreadsheetId: "YOUR_ID" });
+  const users = db.table("Users");
+
+  // Show confirmation dialog
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert(
+    "Confirm Reset",
+    "This will delete all user data. Continue?",
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response === ui.Button.YES) {
+    users.truncate();
+    Logger.log("Table reset complete");
+  } else {
+    Logger.log("Reset cancelled");
+  }
+}
+```
+
+## Best Practices
+
+### Define Structure Early
+
+<Card title="Good Practice" icon="check">
+  Define your complete table structure at creation time:
+  ```javascript
+  users.create(["id", "name", "email", "age", "status", "created_at"]);
+  ```
+</Card>
+
+<Card title="Avoid" icon="x">
+  Don't incrementally add columns as you think of them:
+  ```javascript
+  users.create(["id", "name"]);
+  users.addColumn("email"); // Added later
+  users.addColumn("age");   // Added even later
+  ```
+</Card>
+
+### Use Proper Primary Keys
+
+```javascript
+// ✅ Set primary key explicitly
+users.setPrimaryKey("id");
+
+// Now ID-based operations work correctly
+const user = users.findById(123);
+users.updateById(123, { name: "Updated" });
+users.deleteById(123);
+```
+
+### Preserve Data During Changes
+
+```javascript
+// ✅ Rename individual columns
+users.renameColumn("name", "full_name");
+users.renameColumn("email", "email_address");
+
+// ❌ Don't use overwrite with setHeaders
+users.setHeaders(["id", "full_name", "email_address"], true); // Loses data!
+```
+
+### Confirm Destructive Operations
+
+```javascript
+// ❌ Never do this without confirmation
+users.drop();
+
+// ✅ Always confirm destructive operations
+const ui = SpreadsheetApp.getUi();
+if (ui.alert("Delete table?", ui.ButtonSet.YES_NO) === ui.Button.YES) {
+  users.drop();
+}
+```
+
+## Spanish Aliases
+
+ServiceSQL includes Spanish aliases for all table methods:
+
+```javascript
+const usuarios = db.table("Usuarios");
+
+// Create
+usuarios.crear(["id", "nombre", "email"]);
+
+// Columns
+usuarios.crearColumna("telefono");
+usuarios.renombrarColumna("nombre", "nombre_completo");
+usuarios.borrarColumna("telefono");
+
+// Headers
+const encabezados = usuarios.encabezados();
+usuarios.establecerEncabezados(["id", "nombre_nuevo"]);
+
+// Utilities
+usuarios.establecerClavePrimaria("id");
+usuarios.truncar();
+// usuarios.eliminar(); // Same as drop()
+```
+
+## Summary
+
+The Table helper provides essential operations for managing your sheet structures:
+
+- **Creating**: `create()`, `ensureHeaders()`
+- **Headers**: `getHeaders()`, `setHeaders()`
+- **Columns**: `addColumn()`, `removeColumn()`, `renameColumn()`
+- **Utilities**: `setPrimaryKey()`, `truncate()`, `drop()`
+
+For complex queries and data operations, combine Table with [QueryBuilder](/core/query-builder) and [Models](/core/models).

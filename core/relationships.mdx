@@ -1,0 +1,662 @@
+---
+title: Relationships
+description: Define and use BelongsTo, HasMany, HasOne, and ManyToMany relationships between models
+---
+
+Relationships allow you to connect models together, avoiding N+1 query problems and optimizing data loading. ServiceSQL supports all common relationship types.
+
+## Relationship Types
+
+| Type | Cardinality | Example |
+|------|-------------|--------|
+| **BelongsTo** | N:1 | A post belongs to a user |
+| **HasOne** | 1:1 | A user has one profile |
+| **HasMany** | 1:N | A user has many posts |
+| **ManyToMany** | N:N | Posts have many tags, tags have many posts |
+
+## Example Schema
+
+For these examples, assume these sheets:
+
+- **Users** → `id`, `name`, `email`
+- **Posts** → `id`, `user_id`, `title`, `body`
+- **Comments** → `id`, `post_id`, `user_id`, `text`
+- **Tags** → `id`, `name`
+- **PostTag** (pivot) → `post_id`, `tag_id`
+
+## Key Concepts
+
+<ParamField path="localKey" type="string">
+  Field in the parent model used for the relationship
+</ParamField>
+
+<ParamField path="foreignKey" type="string">
+  Field in the related model that references the parent
+</ParamField>
+
+<ParamField path="ownerKey" type="string">
+  Field in the owner model (for BelongsTo)
+</ParamField>
+
+<ParamField path="pivotTable" type="string">
+  Intermediate table for ManyToMany relationships
+</ParamField>
+
+## Defining Relationships
+
+Relationships are defined as methods in the model that return the relationship configuration:
+
+```javascript
+class User extends Model {
+  posts() {
+    return this.hasMany(Post);
+  }
+
+  profile() {
+    return this.hasOne(Profile);
+  }
+}
+
+User._table = "Users";
+User.use(db);
+
+class Post extends Model {
+  author() {
+    return this.belongsTo(User, "user_id");
+  }
+
+  comments() {
+    return this.hasMany(Comment);
+  }
+
+  tags() {
+    return this.manyToMany(Tag, "PostTag");
+  }
+}
+
+Post._table = "Posts";
+Post.use(db);
+```
+
+## BelongsTo (N:1)
+
+Represents a many-to-one relationship where many records relate to one parent record.
+
+### Definition
+
+```javascript
+class Post extends Model {
+  author() {
+    return this.belongsTo(User, "user_id", "id");
+    // foreignKey: "user_id" (in Posts table)
+    // ownerKey: "id" (in Users table)
+  }
+}
+
+Post._table = "Posts";
+Post.use(db);
+```
+
+<ParamField path="RelatedModel" type="class" required>
+  The model class this relationship points to
+</ParamField>
+
+<ParamField path="foreignKey" type="string" default="{related}_id">
+  Foreign key column in current table
+</ParamField>
+
+<ParamField path="ownerKey" type="string" default="id">
+  Primary key in related table
+</ParamField>
+
+### Usage with Eager Loading
+
+```javascript
+// Load posts with their authors (avoids N+1)
+const posts = Post.with("author").get();
+
+posts.each(post => {
+  Logger.log(post.title);
+  Logger.log(post.author.name);  // Author already loaded
+});
+```
+
+<Warning>
+  **Avoid lazy loading** - Don't fetch related records individually as it creates N+1 queries:
+  
+  ```javascript
+  // ❌ N+1 problem
+  const post = Post.first();
+  const author = User.find(post.user_id);  // Additional query
+  
+  // ✅ Use eager loading
+  const post = Post.with("author").first();
+  Logger.log(post.author.name);  // Already loaded
+  ```
+</Warning>
+
+## HasMany (1:N)
+
+Represents a one-to-many relationship where one record has many related records.
+
+### Definition
+
+```javascript
+class User extends Model {
+  posts() {
+    return this.hasMany(Post, "user_id", "id");
+    // foreignKey: "user_id" (in Posts table)
+    // localKey: "id" (in Users table)
+  }
+}
+
+User._table = "Users";
+User.use(db);
+```
+
+<ParamField path="RelatedModel" type="class" required>
+  The model class for related records
+</ParamField>
+
+<ParamField path="foreignKey" type="string" default="{parent}_id">
+  Foreign key in related table
+</ParamField>
+
+<ParamField path="localKey" type="string" default="id">
+  Primary key in parent table
+</ParamField>
+
+### Usage
+
+```javascript
+// Load users with their posts
+const users = User.with("posts").get();
+
+users.each(user => {
+  Logger.log(`${user.name} has ${user.posts.count()} posts`);
+
+  // posts is a Collection
+  user.posts.where("published", true).each(post => {
+    Logger.log(post.title);
+  });
+});
+```
+
+<Note>
+  `hasMany` returns a `Collection`, not a plain array. You can use all Collection methods on the relationship result.
+</Note>
+
+## HasOne (1:1)
+
+Represents a one-to-one relationship where one record has exactly one related record.
+
+### Definition
+
+```javascript
+class User extends Model {
+  profile() {
+    return this.hasOne(Profile, "user_id", "id");
+    // foreignKey: "user_id" (in Profiles table)
+    // localKey: "id" (in Users table)
+  }
+}
+
+User._table = "Users";
+User.use(db);
+```
+
+<ParamField path="RelatedModel" type="class" required>
+  The related model class
+</ParamField>
+
+<ParamField path="foreignKey" type="string" default="{parent}_id">
+  Foreign key in related table
+</ParamField>
+
+<ParamField path="localKey" type="string" default="id">
+  Primary key in parent table
+</ParamField>
+
+### Usage
+
+```javascript
+const users = User.with("profile").get();
+
+users.each(user => {
+  if (user.profile) {
+    Logger.log(`${user.name} - Bio: ${user.profile.bio}`);
+  }
+});
+```
+
+## ManyToMany (N:N)
+
+Represents a many-to-many relationship using an intermediate pivot table.
+
+### Definition
+
+```javascript
+class Post extends Model {
+  tags() {
+    return this.manyToMany(Tag, "PostTag", "post_id", "tag_id");
+    // pivotTable: "PostTag"
+    // parentKey: "post_id" (in pivot table)
+    // relatedKey: "tag_id" (in pivot table)
+  }
+}
+
+Post._table = "Posts";
+Post.use(db);
+
+class Tag extends Model {
+  posts() {
+    return this.manyToMany(Post, "PostTag", "tag_id", "post_id");
+  }
+}
+
+Tag._table = "Tags";
+Tag.use(db);
+```
+
+<ParamField path="RelatedModel" type="class" required>
+  The related model class
+</ParamField>
+
+<ParamField path="pivotTable" type="string" required>
+  Name of the intermediate/pivot table
+</ParamField>
+
+<ParamField path="parentKey" type="string" default="{parent}_id">
+  Column in pivot table for parent ID
+</ParamField>
+
+<ParamField path="relatedKey" type="string" default="{related}_id">
+  Column in pivot table for related ID
+</ParamField>
+
+### Pivot Table Structure
+
+```
+PostTag:
+┌─────────┬────────┐
+│ post_id │ tag_id │
+├─────────┼────────┤
+│    1    │   1    │
+│    1    │   2    │
+│    2    │   1    │
+└─────────┴────────┘
+```
+
+### Usage
+
+```javascript
+const posts = Post.with("tags").get();
+
+posts.each(post => {
+  Logger.log(`${post.title} tags:`);
+
+  // tags is a Collection
+  post.tags.each(tag => {
+    Logger.log(`- ${tag.name}`);
+  });
+});
+```
+
+## Eager Loading
+
+Eager loading prevents the N+1 query problem by loading relationships upfront.
+
+### The N+1 Problem
+
+```javascript
+// ❌ Makes 1 + N queries (N+1 problem)
+const posts = Post.all();
+posts.each(post => {
+  const author = User.find(post.user_id);  // Query for EACH post
+  Logger.log(author.name);
+});
+```
+
+### Solution: Eager Loading
+
+```javascript
+// ✅ Makes only 2 queries (Posts + Users)
+const posts = Post.with("author").get();
+posts.each(post => {
+  Logger.log(post.author.name);  // Already loaded
+});
+```
+
+### Load Multiple Relationships
+
+```javascript
+const posts = Post.with("author", "comments", "tags").get();
+```
+
+## Nested Relationships
+
+Load relationships of relationships using dot notation:
+
+```javascript
+// Load posts → comments → author (of each comment)
+const posts = Post.with("comments.author").get();
+
+posts.each(post => {
+  Logger.log(`Post: ${post.title}`);
+
+  post.comments.each(comment => {
+    Logger.log(`  - ${comment.text} by ${comment.author.name}`);
+  });
+});
+```
+
+### Multiple Nested Levels
+
+```javascript
+// Users → Posts → Comments → Author
+const users = User.with("posts.comments.author").get();
+
+// Multiple nested relationships
+const posts = Post.with(
+  "author",
+  "comments.author",
+  "tags"
+).get();
+```
+
+## Relationship Constraints
+
+Apply automatic filters to relationships:
+
+```javascript
+class User extends Model {
+  publishedPosts() {
+    return this.hasMany(Post, "user_id", "id").where(query => {
+      return query.where("published", true)
+                  .orderBy("created_at", "desc");
+    });
+  }
+
+  recentComments() {
+    return this.hasMany(Comment, "user_id", "id").where(query => {
+      const lastWeek = new Date();
+      lastWeek.setDate(lastWeek.getDate() - 7);
+      return query.where("created_at", ">=", lastWeek.toISOString());
+    });
+  }
+}
+
+User._table = "Users";
+User.use(db);
+```
+
+### Usage
+
+```javascript
+const users = User.with("publishedPosts", "recentComments").get();
+
+users.each(user => {
+  // Only published posts
+  Logger.log(`Published posts: ${user.publishedPosts.count()}`);
+
+  // Only comments from last week
+  Logger.log(`Recent comments: ${user.recentComments.count()}`);
+});
+```
+
+<Note>
+  Constraints are applied automatically during eager loading. You don't need to manually filter the results.
+</Note>
+
+## Collections on Relationships
+
+Relationships that return multiple records (`hasMany`, `manyToMany`) return Collection instances:
+
+```javascript
+const user = User.with("posts").first();
+
+// posts is a Collection
+user.posts
+  .where("published", true)
+  .sortByDesc("views")
+  .take(5)
+  .each(post => {
+    Logger.log(post.title);
+  });
+
+// Collection methods available
+const totalViews = user.posts.sum("views");
+const avgViews = user.posts.avg("views");
+const titles = user.posts.pluck("title");
+const grouped = user.posts.groupBy("category");
+```
+
+### Convert to Array
+
+```javascript
+const postsArray = user.posts.all();
+const postsJSON = user.posts.toJSON();
+```
+
+## Complete Example
+
+### Blog with Posts and Comments
+
+```javascript
+class User extends Model {
+  posts() { return this.hasMany(Post); }
+}
+User._table = "Users";
+User.use(db);
+
+class Post extends Model {
+  author() { return this.belongsTo(User, "user_id"); }
+  comments() { return this.hasMany(Comment); }
+  tags() { return this.manyToMany(Tag, "PostTag"); }
+}
+Post._table = "Posts";
+Post.use(db);
+
+class Comment extends Model {
+  post() { return this.belongsTo(Post, "post_id"); }
+  author() { return this.belongsTo(User, "user_id"); }
+}
+Comment._table = "Comments";
+Comment.use(db);
+
+class Tag extends Model {
+  posts() { return this.manyToMany(Post, "PostTag", "tag_id", "post_id"); }
+}
+Tag._table = "Tags";
+Tag.use(db);
+
+// Usage:
+function showBlogPost(postId) {
+  const post = Post.with("author", "comments.author", "tags")
+    .where("id", postId)
+    .first();
+
+  Logger.log(`Title: ${post.title}`);
+  Logger.log(`Author: ${post.author.name}`);
+  Logger.log(`Tags: ${post.tags.pluck("name").all().join(", ")}`);
+  Logger.log(`Comments: ${post.comments.count()}`);
+
+  post.comments.each(comment => {
+    Logger.log(`  - ${comment.author.name}: ${comment.text}`);
+  });
+}
+```
+
+### E-commerce with Products
+
+```javascript
+class Product extends Model {
+  category() {
+    return this.belongsTo(Category, "category_id");
+  }
+
+  orders() {
+    return this.manyToMany(Order, "OrderProduct", "product_id", "order_id");
+  }
+
+  reviews() {
+    return this.hasMany(Review);
+  }
+
+  activeReviews() {
+    return this.hasMany(Review).where(q => q.where("approved", true));
+  }
+}
+
+Product._table = "Products";
+Product.use(db);
+
+// Product report
+function getProductReport() {
+  const products = Product.with("category", "activeReviews").get();
+
+  return products.map(product => ({
+    name: product.name,
+    category: product.category.name,
+    avgRating: product.activeReviews.avg("rating"),
+    reviewCount: product.activeReviews.count()
+  })).sortByDesc("avgRating");
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Use Eager Loading" icon="bolt">
+    ```javascript
+    // ✅ Efficient
+    const posts = Post.with("author", "comments").get();
+    ```
+  </Card>
+  
+  <Card title="Descriptive Relationship Names" icon="tag">
+    ```javascript
+    class User extends Model {
+      posts() { return this.hasMany(Post); }
+      publishedPosts() { 
+        return this.hasMany(Post)
+          .where(q => q.where("published", true)); 
+      }
+    }
+    ```
+  </Card>
+  
+  <Card title="Use Nested Loading" icon="sitemap">
+    ```javascript
+    // ✅ Load all in 3 queries
+    const posts = Post.with("author", "comments.author").get();
+    ```
+  </Card>
+  
+  <Card title="Leverage Collections" icon="layer-group">
+    ```javascript
+    const user = User.with("posts").first();
+    const count = user.posts.where("published", true).count();
+    ```
+  </Card>
+</CardGroup>
+
+### Common Mistakes
+
+<Tabs>
+  <Tab title="Do">
+    **Use Eager Loading**
+    ```javascript
+    // ✅ Efficient
+    const posts = Post.with("author").get();
+    ```
+    
+    **Load Only What You Need**
+    ```javascript
+    // ✅ Load specific relationships
+    const posts = Post.with("author").get();
+    ```
+    
+    **Use Nested Relationships**
+    ```javascript
+    // ✅ One query chain
+    const posts = Post.with("comments.author").get();
+    ```
+  </Tab>
+  
+  <Tab title="Don't">
+    **Avoid Queries in Loops**
+    ```javascript
+    // ❌ N+1 problem
+    const posts = Post.all();
+    posts.each(post => {
+      const author = User.find(post.user_id);
+    });
+    ```
+    
+    **Don't Over-Eager Load**
+    ```javascript
+    // ❌ Loading unused data
+    const posts = Post.with("author", "comments", "tags", "category").get();
+    posts.pluck("title");  // Only using title
+    ```
+    
+    **Avoid Deep Nesting**
+    ```javascript
+    // ❌ Too deep, hard to maintain
+    const data = User.with("posts.comments.author.profile.address.country").get();
+    ```
+  </Tab>
+</Tabs>
+
+## Performance Tips
+
+<Card title="1. Load Only What's Needed" icon="filter">
+  ```javascript
+  // ✅ Only load necessary relationships
+  const posts = Post.with("author").get();
+  ```
+</Card>
+
+<Card title="2. Use Select to Reduce Data" icon="database">
+  ```javascript
+  const posts = Post.query()
+    .select("id", "title", "user_id")
+    .with("author")
+    .get();
+  ```
+</Card>
+
+<Card title="3. Paginate Large Results" icon="table-cells">
+  ```javascript
+  const posts = Post.with("author")
+    .paginate(20, 1);  // 20 per page
+  ```
+</Card>
+
+<Card title="4. Conditional Loading" icon="code-branch">
+  ```javascript
+  let query = Post.query();
+  
+  if (includeAuthor) {
+    query = query.with("author");
+  }
+  
+  if (includeComments) {
+    query = query.with("comments");
+  }
+  
+  const posts = query.get();
+  ```
+</Card>
+
+## Relationship Summary
+
+| Relationship | Represents | Returns | Example |
+|--------------|------------|---------|--------|
+| **BelongsTo** | N:1 | Model or null | `post.author` |
+| **HasOne** | 1:1 | Model or null | `user.profile` |
+| **HasMany** | 1:N | Collection | `user.posts` |
+| **ManyToMany** | N:N | Collection | `post.tags` |
+
+Relationships are fundamental for building efficient, maintainable applications. Use them correctly to avoid N+1 queries and keep your code clean!
