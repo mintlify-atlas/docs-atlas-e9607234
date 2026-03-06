@@ -1,0 +1,128 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "ServiceSQL",
+  "projectDescription": "Eloquent-inspired ORM library for Google Apps Script that transforms Google Sheets into a relational database",
+  "theme": "sequoia",
+  "primaryColor": "#0ea5e9",
+  "lightColor": "#7dd3fc",
+  "darkColor": "#0284c7",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core/models",
+              "core/query-builder",
+              "core/collections",
+              "core/relationships"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/scopes",
+              "advanced/eager-loading",
+              "advanced/casts-and-mutators",
+              "advanced/timestamps",
+              "advanced/soft-deletes",
+              "advanced/observers"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/table-management",
+              "guides/pagination",
+              "guides/aggregations",
+              "guides/best-practices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core Classes",
+            "pages": [
+              "api/appsql",
+              "api/model",
+              "api/query-builder",
+              "api/collection"
+            ]
+          },
+          {
+            "group": "Relationships",
+            "pages": [
+              "api/belongs-to",
+              "api/has-many",
+              "api/has-one",
+              "api/many-to-many"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/table",
+              "api/cache-builder",
+              "api/gmail-builder",
+              "api/utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Eloquent-style Models with automatic timestamps and soft deletes",
+    "Fluent QueryBuilder with WHERE, JOIN, GROUP BY, HAVING, and aggregations",
+    "Complete relationship support (BelongsTo, HasMany, HasOne, ManyToMany)",
+    "Laravel-inspired Collections with 50+ transformation methods",
+    "Eager loading to prevent N+1 query problems",
+    "Automatic type casting (int, bool, json, date)",
+    "Reusable query scopes",
+    "Accessors and Mutators for data transformation",
+    "Model observers for lifecycle hooks",
+    "Built-in pagination support"
+  ],
+  "publicApiSurface": [
+    "APPSQL.init(config)",
+    "APPSQL.table(sheetName)",
+    "Model.create(attributes)",
+    "Model.find(id)",
+    "Model.all()",
+    "Model.where(column, operator, value)",
+    "Model.with(...relations)",
+    "QueryBuilder.where(column, operator, value)",
+    "QueryBuilder.join(table, first, operator, second)",
+    "QueryBuilder.orderBy(column, direction)",
+    "QueryBuilder.limit(number)",
+    "QueryBuilder.get()",
+    "QueryBuilder.first()",
+    "QueryBuilder.paginate(perPage, page)",
+    "Collection.map(callback)",
+    "Collection.filter(callback)",
+    "Collection.pluck(key)",
+    "Collection.groupBy(key)",
+    "Collection.sortBy(key)",
+    "Collection.sum(key)",
+    "Collection.avg(key)",
+    "model.save()",
+    "model.delete()",
+    "model.hasMany(RelatedModel, foreignKey)",
+    "model.belongsTo(RelatedModel, foreignKey)",
+    "model.hasOne(RelatedModel, foreignKey)",
+    "model.manyToMany(RelatedModel, pivotTable)"
+  ]
+}
